@@ -105,7 +105,6 @@ def main():
         num_examples = (
             args.examples if args.examples is not None else (5 if debug_mode else None)
         )
-        print(num_examples)
         # Set num_examples = None to reproduce full evals
         match eval_name:
             case "mmlu":
