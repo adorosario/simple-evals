@@ -1,21 +1,24 @@
 import json
 import argparse
 import pandas as pd
-from . import common
-from .drop_eval import DropEval
-from .gpqa_eval import GPQAEval
-from .humaneval_eval import HumanEval
-from .math_eval import MathEval
-from .mgsm_eval import MGSMEval
-from .mmlu_eval import MMLUEval
-from .simpleqa_eval import SimpleQAEval
-from .sampler.chat_completion_sampler import (
+import common
+from drop_eval import DropEval
+from gpqa_eval import GPQAEval
+# from humaneval_eval import HumanEval
+from math_eval import MathEval
+from mgsm_eval import MGSMEval
+from mmlu_eval import MMLUEval
+from simpleqa_eval import SimpleQAEval
+from sampler.chat_completion_sampler import (
     OPENAI_SYSTEM_MESSAGE_API,
     OPENAI_SYSTEM_MESSAGE_CHATGPT,
     ChatCompletionSampler,
 )
-from .sampler.o1_chat_completion_sampler import O1ChatCompletionSampler
-from .sampler.claude_sampler import ClaudeCompletionSampler, CLAUDE_SYSTEM_MESSAGE_LMSYS
+from datetime import datetime
+import os
+from sampler.o1_chat_completion_sampler import O1ChatCompletionSampler
+from sampler.customgpt_sampler import CustomGPTSampler
+from sampler.claude_sampler import ClaudeCompletionSampler, CLAUDE_SYSTEM_MESSAGE_LMSYS
 
 
 def main():
@@ -79,6 +82,7 @@ def main():
             model="claude-3-opus-20240229",
             system_message=CLAUDE_SYSTEM_MESSAGE_LMSYS,
         ),
+        "customgpt": CustomGPTSampler(model_name="gpt-3.5-turbo"),
     }
 
     if args.list_models:
@@ -116,7 +120,7 @@ def main():
                     n_repeats=1 if debug_mode else 10, num_examples=num_examples
                 )
             case "mgsm":
-                return MGSMEval(num_examples_per_lang=10 if debug_mode else 250)
+                return MGSMEval(num_examples_per_lang=10 if debug_mode else num_examples)
             case "drop":
                 return DropEval(
                     num_examples=10 if debug_mode else num_examples,
@@ -140,18 +144,21 @@ def main():
     debug_suffix = "_DEBUG" if args.debug else ""
     print(debug_suffix)
     mergekey2resultpath = {}
+    results_dir = f"results/{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
     for model_name, sampler in models.items():
         for eval_name, eval_obj in evals.items():
             result = eval_obj(sampler)
             # ^^^ how to use a sampler
             file_stem = f"{eval_name}_{model_name}"
-            report_filename = f"/tmp/{file_stem}{debug_suffix}.html"
+            report_filename = f"{file_stem}{debug_suffix}.html"
             print(f"Writing report to {report_filename}")
+            os.makedirs(results_dir, exist_ok=True)
+            report_filename = os.path.join(results_dir, f"{file_stem}{debug_suffix}.html")
             with open(report_filename, "w") as fh:
                 fh.write(common.make_report(result))
             metrics = result.metrics | {"score": result.score}
             print(metrics)
-            result_filename = f"/tmp/{file_stem}{debug_suffix}.json"
+            result_filename = os.path.join(results_dir, f"{file_stem}{debug_suffix}.json")
             with open(result_filename, "w") as f:
                 f.write(json.dumps(metrics, indent=2))
             print(f"Writing results to {result_filename}")

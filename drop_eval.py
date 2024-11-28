@@ -10,14 +10,15 @@ import random
 import re
 import string
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
-
+import io
 import blobfile as bf
 import numpy as np
 from scipy.optimize import linear_sum_assignment
+import requests
 
-from . import common
-from .common import ANSWER_PATTERN, HTML_JINJA
-from .types import Eval, EvalResult, SamplerBase, SingleEvalResult
+import common
+from common import ANSWER_PATTERN, HTML_JINJA
+from custom_types import Eval, EvalResult, SamplerBase, SingleEvalResult
 
 """
 From here through _normalize_answer was originally copied from:
@@ -245,20 +246,28 @@ class DropEval(Eval):
         self.test_jsonl = (
             "https://openaipublic.blob.core.windows.net/simple-evals/drop_v0_dev.jsonl.gz"
         )
-        with gzip.GzipFile(fileobj=bf.BlobFile(self.train_jsonl, "rb"), mode="rb") as f:
-            self.train_samples = list(map(json.loads, f.readlines()))
-        with gzip.GzipFile(fileobj=bf.BlobFile(self.test_jsonl, "rb"), mode="rb") as f:
-            self.test_samples = list(map(json.loads, f.readlines()))
-            if self._num_examples:
-                self.test_samples = random.Random(self.seed).sample(
-                    self.test_samples, self._num_examples
-                )
+        response = requests.get(self.train_jsonl)
+
+        # Check if the response is gzipped
+        with gzip.GzipFile(fileobj=io.BytesIO(response.content)) as f:
+            self.train_samples = [json.loads(line) for line in f]
+
+        response = requests.get(self.test_jsonl)
+
+        # Check if the response is gzipped
+        with gzip.GzipFile(fileobj=io.BytesIO(response.content)) as f:
+            self.test_samples = [json.loads(line) for line in f]
+    
+        if self._num_examples:
+            self.test_samples = random.Random(self.seed).sample(
+                self.test_samples, self._num_examples
+            )
 
     def __call__(self, sampler: SamplerBase) -> EvalResult:
         rng = random.Random(self.seed)
 
         def fn(example: dict[str, str]):
-            stuffing = rng.sample(self.train_samples, self._train_samples_per_prompt)
+            stuffing = rng.sample(self.test_samples, self._train_samples_per_prompt)
 
             # prompt = """TASK: Read the provided passage, then identify the correct answer to questions below."""
             prompt = """You will be asked to read a passage and answer a question. Some examples of passages and Q&A are provided below."""
