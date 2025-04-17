@@ -35,6 +35,10 @@ class CustomGPTSampler:
                 continue
             else:
                 print(f"Error: {response.status_code}")
+                try: 
+                    print(response.json())
+                except:
+                    print(response.content)
                 time.sleep(5)
                 continue
             
