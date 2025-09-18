@@ -2,6 +2,30 @@
 This repository contains a lightweight library for evaluating language models.
 We are open sourcing it so we can be transparent about the accuracy numbers we're publishing alongside our latest models.
 
+## 🆕 NEW: RAG Benchmark Framework
+**Version 1.1.0** introduces a comprehensive RAG (Retrieval-Augmented Generation) benchmarking framework that compares RAG-enabled models against standard LLMs using the SimpleQA evaluation dataset.
+
+### Quick Start with Docker
+```bash
+# Setup environment
+cp .env.example .env  # Add your API keys
+
+# Test RAG vs OpenAI comparison (5 questions)
+docker compose run --rm simple-evals python rag_benchmark.py --debug
+
+# Full benchmark (100+ questions)
+docker compose run --rm simple-evals python rag_benchmark.py --examples 100
+```
+
+### Key Features
+- **Side-by-side RAG comparison**: CustomGPT (with RAG) vs OpenAI GPT-4o (without RAG)
+- **Automated evaluation**: Uses GPT-4o as judge for consistent grading
+- **Docker environment**: Complete containerized setup with live code development
+- **Comprehensive reporting**: HTML reports with detailed metrics and comparisons
+- **Proven results**: RAG demonstrates significant accuracy improvements on factual questions
+
+📖 **Documentation**: See [`DOCKER_SETUP.md`](DOCKER_SETUP.md) for detailed setup instructions.
+
 ## Benchmark Results
 
 | Model                        | Prompt        | MMLU   | GPQA   | MATH   | HumanEval | MGSM[^5] | DROP[^5]<br>(F1, 3-shot) | SimpleQA 

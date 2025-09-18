@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 import time
 import requests
 load_dotenv()
-project_id = os.environ.get("CUSTOMGPT_PROJECT")
 
 from custom_types import SamplerBase
 
@@ -19,12 +18,13 @@ class CustomGPTSampler:
         self.stop = stop
         self.session_id = uuid.uuid4()
         self.api_key = os.environ.get("CUSTOMGPT_API_KEY")
+        self.project_id = os.environ.get("CUSTOMGPT_PROJECT")
 
     def __call__(self, prompt_messages: list[dict]) -> str:
         prompt = prompt_messages[0]["content"]
         while True:
             response = None
-            url = f"https://app.customgpt.ai/api/v1/projects/{project_id}/conversations/{self.session_id}/messages"
+            url = f"https://app.customgpt.ai/api/v1/projects/{self.project_id}/conversations/{self.session_id}/messages"
             response = requests.post(url, json={"prompt": prompt}, headers={"Authorization": f"Bearer {self.api_key}"})
             if response.status_code == 200:
                 return response.json()['data']["openai_response"]

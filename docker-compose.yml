@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  simple-evals:
+    build: .
+    container_name: simple-evals-benchmark
+    volumes:
+      # Map current directory to /app for live changes
+      - .:/app
+      # Map results directory to persist output
+      - ./results:/app/results
+    environment:
+      # Pass through API keys from host environment
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CUSTOMGPT_API_KEY=${CUSTOMGPT_API_KEY}
+      - CUSTOMGPT_PROJECT=${CUSTOMGPT_PROJECT}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    working_dir: /app
+    # Override default command - you can specify different commands
+    command: python rag_benchmark.py --help
+    # Interactive mode for debugging
+    stdin_open: true
+    tty: true
+
+  # Service for running the FastAPI server
+  api-server:
+    build: .
+    container_name: simple-evals-api
+    volumes:
+      - .:/app
+      - ./results:/app/results
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CUSTOMGPT_API_KEY=${CUSTOMGPT_API_KEY}
+      - CUSTOMGPT_PROJECT=${CUSTOMGPT_PROJECT}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    working_dir: /app
+    command: python main.py
+    ports:
+      - "8000:8000"
+    stdin_open: true
+    tty: true
+
+  # Service for interactive shell
+  shell:
+    build: .
+    container_name: simple-evals-shell
+    volumes:
+      - .:/app
+      - ./results:/app/results
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CUSTOMGPT_API_KEY=${CUSTOMGPT_API_KEY}
+      - CUSTOMGPT_PROJECT=${CUSTOMGPT_PROJECT}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    working_dir: /app
+    command: /bin/bash
+    stdin_open: true
+    tty: true

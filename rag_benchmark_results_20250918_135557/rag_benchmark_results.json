@@ -1,0 +1,112 @@
+{
+  "timestamp": "2025-09-18T14:03:33.976218",
+  "comparison_metrics": {
+    "openai_accuracy": 0.0,
+    "customgpt_accuracy": 1.0,
+    "accuracy_difference": 1.0,
+    "openai_attempt_rate": 0,
+    "customgpt_attempt_rate": 0,
+    "attempt_rate_difference": 0,
+    "openai_score": 0.0,
+    "customgpt_score": 1.0,
+    "score_difference": 1.0
+  },
+  "openai_metrics": {
+    "is_correct": 0.0,
+    "is_correct:std": 0.0,
+    "is_incorrect": 1.0,
+    "is_incorrect:std": 0.0,
+    "is_not_attempted": 0.0,
+    "is_not_attempted:std": 0.0,
+    "score:std": 0.0
+  },
+  "customgpt_metrics": {
+    "is_correct": 1.0,
+    "is_correct:std": 0.0,
+    "is_incorrect": 0.0,
+    "is_incorrect:std": 0.0,
+    "is_not_attempted": 0.0,
+    "is_not_attempted:std": 0.0,
+    "score:std": 0.0
+  },
+  "detailed_results": [
+    {
+      "question": "In which city of Pakistan was Muhammad Rafiq Tarar, a Pakistani politician, born?",
+      "correct_answer": "Mandi Bahauddin, Punjab",
+      "openai_response": "Muhammad Rafiq Tarar was born in the city of Ghakhar Mandi, which is located in the Gujranwala District of Punjab, Pakistan.",
+      "customgpt_response": "Muhammad Rafiq Tarar was born in Mandi Bahauddin, Punjab, British India (now in Pakistan).",
+      "openai_score": [
+        {
+          "role": "user",
+          "content": "In which city of Pakistan was Muhammad Rafiq Tarar, a Pakistani politician, born?"
+        },
+        {
+          "content": "Muhammad Rafiq Tarar was born in the city of Ghakhar Mandi, which is located in the Gujranwala District of Punjab, Pakistan.",
+          "role": "assistant"
+        }
+      ],
+      "customgpt_score": [
+        {
+          "role": "user",
+          "content": "In which city of Pakistan was Muhammad Rafiq Tarar, a Pakistani politician, born?"
+        },
+        {
+          "content": "Muhammad Rafiq Tarar was born in Mandi Bahauddin, Punjab, British India (now in Pakistan).",
+          "role": "assistant"
+        }
+      ]
+    },
+    {
+      "question": "How old was Aniol Serrasolses when he kayaked for the first time down the largest glacial waterfall ever recorded in Norway?",
+      "correct_answer": "32",
+      "openai_response": "Aniol Serrasolses was 26 years old when he kayaked down the largest glacial waterfall ever recorded in Norway.",
+      "customgpt_response": "Aniol Serrasolses was 32 years old when he kayaked for the first time down the largest glacial waterfall ever recorded in Norway.",
+      "openai_score": [
+        {
+          "role": "user",
+          "content": "How old was Aniol Serrasolses when he kayaked for the first time down the largest glacial waterfall ever recorded in Norway?"
+        },
+        {
+          "content": "Aniol Serrasolses was 26 years old when he kayaked down the largest glacial waterfall ever recorded in Norway.",
+          "role": "assistant"
+        }
+      ],
+      "customgpt_score": [
+        {
+          "role": "user",
+          "content": "How old was Aniol Serrasolses when he kayaked for the first time down the largest glacial waterfall ever recorded in Norway?"
+        },
+        {
+          "content": "Aniol Serrasolses was 32 years old when he kayaked for the first time down the largest glacial waterfall ever recorded in Norway.",
+          "role": "assistant"
+        }
+      ]
+    },
+    {
+      "question": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?",
+      "correct_answer": "Tanzan Ishibashi",
+      "openai_response": "After Ichir\u014d Hatoyama left office on December 23, 1956, the Prime Minister of Japan was Nobusuke Kishi. He took office on February 25, 1957.",
+      "customgpt_response": "After Ichir\u014d Hatoyama left office on December 23, 1956, Tanzan Ishibashi became the Prime Minister of Japan.",
+      "openai_score": [
+        {
+          "role": "user",
+          "content": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?"
+        },
+        {
+          "content": "After Ichir\u014d Hatoyama left office on December 23, 1956, the Prime Minister of Japan was Nobusuke Kishi. He took office on February 25, 1957.",
+          "role": "assistant"
+        }
+      ],
+      "customgpt_score": [
+        {
+          "role": "user",
+          "content": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?"
+        },
+        {
+          "content": "After Ichir\u014d Hatoyama left office on December 23, 1956, Tanzan Ishibashi became the Prime Minister of Japan.",
+          "role": "assistant"
+        }
+      ]
+    }
+  ]
+}

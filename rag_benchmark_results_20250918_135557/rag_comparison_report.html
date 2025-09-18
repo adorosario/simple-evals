@@ -1,0 +1,432 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>RAG Benchmark: CustomGPT vs OpenAI GPT-4o</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .metric-table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+            .metric-table th, .metric-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            .metric-table th { background-color: #f2f2f2; }
+            .comparison-row { margin: 20px 0; padding: 10px; border: 1px solid #ccc; }
+            .better { color: green; font-weight: bold; }
+            .worse { color: red; font-weight: bold; }
+            .same { color: orange; font-weight: bold; }
+            .question-comparison { margin: 20px 0; padding: 15px; border: 1px solid #eee; }
+            .response-box { background-color: #f9f9f9; padding: 10px; margin: 5px 0; border-radius: 5px; }
+        </style>
+    </head>
+    <body>
+        <h1>RAG Benchmark Results</h1>
+        <h2>CustomGPT (RAG) vs OpenAI GPT-4o (No RAG)</h2>
+
+        <h3>Summary Metrics</h3>
+        <table class="metric-table">
+            <tr><th>Metric</th><th>OpenAI GPT-4o</th><th>CustomGPT (RAG)</th><th>Difference</th></tr>
+            <tr>
+                <td>Accuracy</td>
+                <td>0.000</td>
+                <td>1.000</td>
+                <td class="better">
+                    +1.000
+                </td>
+            </tr>
+            <tr>
+                <td>Attempt Rate</td>
+                <td>0.000</td>
+                <td>0.000</td>
+                <td class="same">
+                    +0.000
+                </td>
+            </tr>
+            <tr>
+                <td>Overall Score</td>
+                <td>0.000</td>
+                <td>1.000</td>
+                <td class="better">
+                    +1.000
+                </td>
+            </tr>
+        </table>
+
+        <h3>Analysis</h3>
+        <div class="comparison-row">
+            <strong>RAG Impact:</strong>
+            CustomGPT with RAG performs better than OpenAI GPT-4o
+            (+100.0% accuracy difference)
+        </div>
+
+        <h3>Detailed Individual Model Reports</h3>
+        <h4>OpenAI GPT-4o Results</h4>
+        <!DOCTYPE html>
+<html>
+    <head>
+        <style>
+            .message {
+                padding: 8px 16px;
+                margin-bottom: 8px;
+                border-radius: 4px;
+            }
+            .message.user {
+                background-color: #B2DFDB;
+                color: #00695C;
+            }
+            .message.assistant {
+                background-color: #B39DDB;
+                color: #4527A0;
+            }
+            .message.system {
+                background-color: #EEEEEE;
+                color: #212121;
+            }
+            .role {
+                font-weight: bold;
+                margin-bottom: 4px;
+            }
+            .variant {
+                color: #795548;
+            }
+            table, th, td {
+                border: 1px solid black;
+            }
+            pre {
+                white-space: pre-wrap;
+            }
+        </style>
+    </head>
+    <body>
+    
+    <h1>Metrics</h1>
+    <table>
+    <tr>
+        <th>Metric</th>
+        <th>Value</th>
+    </tr>
+    <tr>
+        <td><b>Score</b></td>
+        <td>0.0</td>
+    </tr>
+    
+    <tr>
+        <td>is_correct</td>
+        <td>0.0</td>
+    </tr>
+    
+    <tr>
+        <td>is_correct:std</td>
+        <td>0.0</td>
+    </tr>
+    
+    <tr>
+        <td>is_incorrect</td>
+        <td>1.0</td>
+    </tr>
+    
+    <tr>
+        <td>is_incorrect:std</td>
+        <td>0.0</td>
+    </tr>
+    
+    <tr>
+        <td>is_not_attempted</td>
+        <td>0.0</td>
+    </tr>
+    
+    <tr>
+        <td>is_not_attempted:std</td>
+        <td>0.0</td>
+    </tr>
+    
+    <tr>
+        <td>score:std</td>
+        <td>0.0</td>
+    </tr>
+    
+    </table>
+    
+    <h1>Examples</h1>
+    
+    
+<h3>Prompt conversation</h3>
+
+
+<div class="message user">
+    <div class="role">
+    user 
+    
+    </div>
+    <div class="content">
+    <pre>In which city of Pakistan was Muhammad Rafiq Tarar, a Pakistani politician, born?</pre>
+    </div>
+</div>
+
+<h3>Sampled message</h3>
+
+<div class="message assistant">
+    <div class="role">
+    assistant 
+    
+    </div>
+    <div class="content">
+    <pre>Muhammad Rafiq Tarar was born in the city of Ghakhar Mandi, which is located in the Gujranwala District of Punjab, Pakistan.</pre>
+    </div>
+</div>
+<h3>Results</h3>
+<p>Correct Answer: Mandi Bahauddin, Punjab</p>
+<p>Extracted Answer: Muhammad Rafiq Tarar was born in the city of Ghakhar Mandi, which is located in the Gujranwala District of Punjab, Pakistan.</p>
+<p>Score: False</p>
+    <hr>
+    
+    
+<h3>Prompt conversation</h3>
+
+
+<div class="message user">
+    <div class="role">
+    user 
+    
+    </div>
+    <div class="content">
+    <pre>How old was Aniol Serrasolses when he kayaked for the first time down the largest glacial waterfall ever recorded in Norway?</pre>
+    </div>
+</div>
+
+<h3>Sampled message</h3>
+
+<div class="message assistant">
+    <div class="role">
+    assistant 
+    
+    </div>
+    <div class="content">
+    <pre>Aniol Serrasolses was 26 years old when he kayaked down the largest glacial waterfall ever recorded in Norway.</pre>
+    </div>
+</div>
+<h3>Results</h3>
+<p>Correct Answer: 32</p>
+<p>Extracted Answer: Aniol Serrasolses was 26 years old when he kayaked down the largest glacial waterfall ever recorded in Norway.</p>
+<p>Score: False</p>
+    <hr>
+    
+    
+<h3>Prompt conversation</h3>
+
+
+<div class="message user">
+    <div class="role">
+    user 
+    
+    </div>
+    <div class="content">
+    <pre>Who was Japan&#39;s Prime Minister after Ichirō Hatoyama left office on December 23, 1956?</pre>
+    </div>
+</div>
+
+<h3>Sampled message</h3>
+
+<div class="message assistant">
+    <div class="role">
+    assistant 
+    
+    </div>
+    <div class="content">
+    <pre>After Ichirō Hatoyama left office on December 23, 1956, the Prime Minister of Japan was Nobusuke Kishi. He took office on February 25, 1957.</pre>
+    </div>
+</div>
+<h3>Results</h3>
+<p>Correct Answer: Tanzan Ishibashi</p>
+<p>Extracted Answer: After Ichirō Hatoyama left office on December 23, 1956, the Prime Minister of Japan was Nobusuke Kishi. He took office on February 25, 1957.</p>
+<p>Score: False</p>
+    <hr>
+    
+    </body>
+</html>
+
+        <h4>CustomGPT RAG Results</h4>
+        <!DOCTYPE html>
+<html>
+    <head>
+        <style>
+            .message {
+                padding: 8px 16px;
+                margin-bottom: 8px;
+                border-radius: 4px;
+            }
+            .message.user {
+                background-color: #B2DFDB;
+                color: #00695C;
+            }
+            .message.assistant {
+                background-color: #B39DDB;
+                color: #4527A0;
+            }
+            .message.system {
+                background-color: #EEEEEE;
+                color: #212121;
+            }
+            .role {
+                font-weight: bold;
+                margin-bottom: 4px;
+            }
+            .variant {
+                color: #795548;
+            }
+            table, th, td {
+                border: 1px solid black;
+            }
+            pre {
+                white-space: pre-wrap;
+            }
+        </style>
+    </head>
+    <body>
+    
+    <h1>Metrics</h1>
+    <table>
+    <tr>
+        <th>Metric</th>
+        <th>Value</th>
+    </tr>
+    <tr>
+        <td><b>Score</b></td>
+        <td>1.0</td>
+    </tr>
+    
+    <tr>
+        <td>is_correct</td>
+        <td>1.0</td>
+    </tr>
+    
+    <tr>
+        <td>is_correct:std</td>
+        <td>0.0</td>
+    </tr>
+    
+    <tr>
+        <td>is_incorrect</td>
+        <td>0.0</td>
+    </tr>
+    
+    <tr>
+        <td>is_incorrect:std</td>
+        <td>0.0</td>
+    </tr>
+    
+    <tr>
+        <td>is_not_attempted</td>
+        <td>0.0</td>
+    </tr>
+    
+    <tr>
+        <td>is_not_attempted:std</td>
+        <td>0.0</td>
+    </tr>
+    
+    <tr>
+        <td>score:std</td>
+        <td>0.0</td>
+    </tr>
+    
+    </table>
+    
+    <h1>Examples</h1>
+    
+    
+<h3>Prompt conversation</h3>
+
+
+<div class="message user">
+    <div class="role">
+    user 
+    
+    </div>
+    <div class="content">
+    <pre>In which city of Pakistan was Muhammad Rafiq Tarar, a Pakistani politician, born?</pre>
+    </div>
+</div>
+
+<h3>Sampled message</h3>
+
+<div class="message assistant">
+    <div class="role">
+    assistant 
+    
+    </div>
+    <div class="content">
+    <pre>Muhammad Rafiq Tarar was born in Mandi Bahauddin, Punjab, British India (now in Pakistan).</pre>
+    </div>
+</div>
+<h3>Results</h3>
+<p>Correct Answer: Mandi Bahauddin, Punjab</p>
+<p>Extracted Answer: Muhammad Rafiq Tarar was born in Mandi Bahauddin, Punjab, British India (now in Pakistan).</p>
+<p>Score: True</p>
+    <hr>
+    
+    
+<h3>Prompt conversation</h3>
+
+
+<div class="message user">
+    <div class="role">
+    user 
+    
+    </div>
+    <div class="content">
+    <pre>How old was Aniol Serrasolses when he kayaked for the first time down the largest glacial waterfall ever recorded in Norway?</pre>
+    </div>
+</div>
+
+<h3>Sampled message</h3>
+
+<div class="message assistant">
+    <div class="role">
+    assistant 
+    
+    </div>
+    <div class="content">
+    <pre>Aniol Serrasolses was 32 years old when he kayaked for the first time down the largest glacial waterfall ever recorded in Norway.</pre>
+    </div>
+</div>
+<h3>Results</h3>
+<p>Correct Answer: 32</p>
+<p>Extracted Answer: Aniol Serrasolses was 32 years old when he kayaked for the first time down the largest glacial waterfall ever recorded in Norway.</p>
+<p>Score: True</p>
+    <hr>
+    
+    
+<h3>Prompt conversation</h3>
+
+
+<div class="message user">
+    <div class="role">
+    user 
+    
+    </div>
+    <div class="content">
+    <pre>Who was Japan&#39;s Prime Minister after Ichirō Hatoyama left office on December 23, 1956?</pre>
+    </div>
+</div>
+
+<h3>Sampled message</h3>
+
+<div class="message assistant">
+    <div class="role">
+    assistant 
+    
+    </div>
+    <div class="content">
+    <pre>After Ichirō Hatoyama left office on December 23, 1956, Tanzan Ishibashi became the Prime Minister of Japan.</pre>
+    </div>
+</div>
+<h3>Results</h3>
+<p>Correct Answer: Tanzan Ishibashi</p>
+<p>Extracted Answer: After Ichirō Hatoyama left office on December 23, 1956, Tanzan Ishibashi became the Prime Minister of Japan.</p>
+<p>Score: True</p>
+    <hr>
+    
+    </body>
+</html>
+
+    </body>
+    </html>
+    
