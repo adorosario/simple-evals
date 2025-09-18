@@ -130,3 +130,7 @@ dmypy.json
 
 myenv
 results
+
+# Knowledge base build artifacts
+cache/
+knowledge_base/
