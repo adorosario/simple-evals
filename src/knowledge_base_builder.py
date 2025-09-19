@@ -8,6 +8,7 @@ for OpenAI vector store upload. Handles the 11,000+ URLs with progress tracking 
 import os
 import json
 import logging
+import random
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from pathlib import Path
@@ -170,6 +171,10 @@ class KnowledgeBaseBuilder:
         urls = self._load_urls_from_file(url_file_path)
         logger.info(f"Loaded {len(urls)} URLs from file")
 
+        # Randomize URL order to ensure unprocessed URLs get a chance
+        random.shuffle(urls)
+        logger.info(f"🎲 Randomized URL order to avoid processing same URLs every run")
+
         if self.max_documents:
             urls = urls[:self.max_documents]
             logger.info(f"Limited to first {len(urls)} URLs for testing")
@@ -186,6 +191,11 @@ class KnowledgeBaseBuilder:
         Returns:
             BuildResult with statistics and output information
         """
+        # Randomize URL order to ensure different URLs are processed each run
+        urls = urls.copy()  # Don't modify the original list
+        random.shuffle(urls)
+        logger.info(f"🎲 Randomized URL processing order")
+
         # Apply max_documents limit if specified
         if self.max_documents:
             urls = urls[:self.max_documents]
@@ -351,11 +361,11 @@ class KnowledgeBaseBuilder:
                         else:
                             logger.warning(f"ScrapingBee also failed for {url}: {scrapingbee_result.error_message}")
 
-                            # Cache the failed result with short TTL (24 hours) to avoid retrying soon
+                            # Cache the failed result with 7-day TTL to avoid retrying soon
                             if self.url_cache:
                                 with self._cache_lock:
-                                    self.url_cache.put(url, fetch_result, ttl=86400)  # 24 hour TTL for failures
-                                logger.info(f"🚫 Cached failed URL (24h TTL): {url}")
+                                    self.url_cache.put(url, fetch_result, ttl=604800)  # 7 day TTL for failures
+                                logger.info(f"🚫 Cached failed URL (7d TTL): {url}")
 
                             return {
                                 'document': None,
@@ -368,11 +378,11 @@ class KnowledgeBaseBuilder:
                             'error': f"Fetch failed for {url}: {fetch_result.error_message} | ScrapingBee error: {str(e)}"
                         }
                 else:
-                    # Cache the failed result with short TTL (24 hours) to avoid retrying soon
+                    # Cache the failed result with 7-day TTL to avoid retrying soon
                     if self.url_cache:
                         with self._cache_lock:
-                            self.url_cache.put(url, fetch_result, ttl=86400)  # 24 hour TTL for failures
-                        logger.info(f"🚫 Cached failed URL (24h TTL): {url}")
+                            self.url_cache.put(url, fetch_result, ttl=604800)  # 7 day TTL for failures
+                        logger.info(f"🚫 Cached failed URL (7d TTL): {url}")
 
                     return {
                         'document': None,
