@@ -1,0 +1,53 @@
+{
+  "call_id": "71dc29f0-4ea7-4a3d-a7ab-be92b0df1620",
+  "run_id": "20250918_224534_85981943",
+  "sampler_name": "CustomGPT_RAG",
+  "question_id": "06444cb4",
+  "question_text": "While Henri d'Angoul\u00eame served as the governor of Provence, who was his secretary?",
+  "request_data": {
+    "message_list": [
+      {
+        "role": "user",
+        "content": "While Henri d'Angoul\u00eame served as the governor of Provence, who was his secretary?"
+      }
+    ],
+    "sampler_config": {
+      "model_name": "customgpt-rag",
+      "max_tokens": 1024,
+      "temperature": 0.7,
+      "top_p": 0.95,
+      "frequency_penalty": 0.0,
+      "presence_penalty": 0.0,
+      "stop": null
+    },
+    "question_preview": "While Henri d'Angoul\u00eame served as the governor of Provence, who was his secretary?"
+  },
+  "response_data": {
+    "response_length": 108,
+    "response_preview": "While Henri d'Angoul\u00eame served as the governor of Provence, his secretary was the poet Fran\u00e7ois de Malherbe.",
+    "call_duration": 9.22136902809143
+  },
+  "response_text": "While Henri d'Angoul\u00eame served as the governor of Provence, his secretary was the poet Fran\u00e7ois de Malherbe.",
+  "timing_metrics": {
+    "start_time_unix": 1758235578.4470282,
+    "start_time_iso": "2025-09-18T22:46:18.447028+00:00",
+    "first_byte_time_unix": 1758235587.6677732,
+    "first_byte_time_iso": "2025-09-18T22:46:27.667773+00:00",
+    "end_time_unix": 1758235587.6685796,
+    "end_time_iso": "2025-09-18T22:46:27.668580+00:00",
+    "total_duration_seconds": 9.221551418304443,
+    "ttfb_seconds": 9.220745086669922,
+    "ttlb_seconds": 9.221551418304443,
+    "request_preparation_seconds": 0.1
+  },
+  "success": true,
+  "error_message": null,
+  "retry_count": 0,
+  "api_endpoint": "customgpt.ai/api",
+  "model_used": "unknown",
+  "metadata": {
+    "logged_at": "2025-09-18T22:46:27.668697+00:00",
+    "python_version": "3.11.13",
+    "audit_version": "1.0"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "call_id": "c81393b4-5055-4257-801b-b394a98c61f0",
+  "run_id": "validation_20250918_223441_4417c78b",
+  "sampler_name": "OpenAI_Vanilla",
+  "question_id": "54d015e9",
+  "question_text": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?",
+  "request_data": {
+    "message_list": [
+      {
+        "role": "user",
+        "content": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?"
+      }
+    ],
+    "sampler_config": {
+      "model": "gpt-4o-mini",
+      "system_message": "You are a helpful assistant. Answer questions based on your training knowledge.",
+      "temperature": 0.0,
+      "max_tokens": 1024
+    },
+    "question_preview": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?"
+  },
+  "response_data": {
+    "response_length": 145,
+    "response_preview": "After Ichir\u014d Hatoyama left office on December 23, 1956, the next Prime Minister of Japan was Nobusuke Kishi. He took office on February 25, 1957.",
+    "call_duration": 1.4000217914581299
+  },
+  "response_text": "After Ichir\u014d Hatoyama left office on December 23, 1956, the next Prime Minister of Japan was Nobusuke Kishi. He took office on February 25, 1957.",
+  "timing_metrics": {
+    "start_time_unix": 1758234890.797673,
+    "start_time_iso": "2025-09-18T22:34:50.797673+00:00",
+    "first_byte_time_unix": 1758234892.1974354,
+    "first_byte_time_iso": "2025-09-18T22:34:52.197435+00:00",
+    "end_time_unix": 1758234892.1980586,
+    "end_time_iso": "2025-09-18T22:34:52.198059+00:00",
+    "total_duration_seconds": 1.4003856182098389,
+    "ttfb_seconds": 1.3997623920440674,
+    "ttlb_seconds": 1.4003856182098389,
+    "request_preparation_seconds": 0.1
+  },
+  "success": true,
+  "error_message": null,
+  "retry_count": 0,
+  "api_endpoint": "api.openai.com/chat/completions",
+  "model_used": "gpt-4o-mini",
+  "metadata": {
+    "logged_at": "2025-09-18T22:34:52.198204+00:00",
+    "python_version": "3.11.13",
+    "audit_version": "1.0"
+  }
+}

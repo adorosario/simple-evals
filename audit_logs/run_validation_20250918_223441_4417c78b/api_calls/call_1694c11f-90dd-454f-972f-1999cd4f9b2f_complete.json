@@ -1,0 +1,50 @@
+{
+  "call_id": "1694c11f-90dd-454f-972f-1999cd4f9b2f",
+  "run_id": "validation_20250918_223441_4417c78b",
+  "sampler_name": "OpenAI_Vanilla",
+  "question_id": "80491102",
+  "question_text": "How old was Aniol Serrasolses when he kayaked for the first time down the largest glacial waterfall ever recorded in Norway?",
+  "request_data": {
+    "message_list": [
+      {
+        "role": "user",
+        "content": "How old was Aniol Serrasolses when he kayaked for the first time down the largest glacial waterfall ever recorded in Norway?"
+      }
+    ],
+    "sampler_config": {
+      "model": "gpt-4o-mini",
+      "system_message": "You are a helpful assistant. Answer questions based on your training knowledge.",
+      "temperature": 0.0,
+      "max_tokens": 1024
+    },
+    "question_preview": "How old was Aniol Serrasolses when he kayaked for the first time down the largest glacial waterfall ..."
+  },
+  "response_data": {
+    "response_length": 152,
+    "response_preview": "Aniol Serrasolses was 23 years old when he kayaked down the largest glacial waterfall ever recorded in Norway, which is the 1000-meter tall Vinnufossen.",
+    "call_duration": 3.630686044692993
+  },
+  "response_text": "Aniol Serrasolses was 23 years old when he kayaked down the largest glacial waterfall ever recorded in Norway, which is the 1000-meter tall Vinnufossen.",
+  "timing_metrics": {
+    "start_time_unix": 1758234887.1664832,
+    "start_time_iso": "2025-09-18T22:34:47.166483+00:00",
+    "first_byte_time_unix": 1758234890.7969923,
+    "first_byte_time_iso": "2025-09-18T22:34:50.796992+00:00",
+    "end_time_unix": 1758234890.7973733,
+    "end_time_iso": "2025-09-18T22:34:50.797373+00:00",
+    "total_duration_seconds": 3.630890130996704,
+    "ttfb_seconds": 3.6305091381073,
+    "ttlb_seconds": 3.630890130996704,
+    "request_preparation_seconds": 0.1
+  },
+  "success": true,
+  "error_message": null,
+  "retry_count": 0,
+  "api_endpoint": "api.openai.com/chat/completions",
+  "model_used": "gpt-4o-mini",
+  "metadata": {
+    "logged_at": "2025-09-18T22:34:50.797437+00:00",
+    "python_version": "3.11.13",
+    "audit_version": "1.0"
+  }
+}

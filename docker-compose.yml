@@ -9,12 +9,11 @@ services:
       - .:/app
       # Map results directory to persist output
       - ./results:/app/results
-    environment:
-      # Pass through API keys from host environment
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - CUSTOMGPT_API_KEY=${CUSTOMGPT_API_KEY}
-      - CUSTOMGPT_PROJECT=${CUSTOMGPT_PROJECT}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Map .env file directly for hot reload
+      - ./.env:/app/.env
+    env_file:
+      # Automatically load .env file
+      - .env
     working_dir: /app
     # Override default command - you can specify different commands
     command: python rag_benchmark.py --help
@@ -29,11 +28,9 @@ services:
     volumes:
       - .:/app
       - ./results:/app/results
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - CUSTOMGPT_API_KEY=${CUSTOMGPT_API_KEY}
-      - CUSTOMGPT_PROJECT=${CUSTOMGPT_PROJECT}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ./.env:/app/.env
+    env_file:
+      - .env
     working_dir: /app
     command: python main.py
     ports:
@@ -48,11 +45,9 @@ services:
     volumes:
       - .:/app
       - ./results:/app/results
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - CUSTOMGPT_API_KEY=${CUSTOMGPT_API_KEY}
-      - CUSTOMGPT_PROJECT=${CUSTOMGPT_PROJECT}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ./.env:/app/.env
+    env_file:
+      - .env
     working_dir: /app
     command: /bin/bash
     stdin_open: true

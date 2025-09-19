@@ -18,6 +18,7 @@ from .url_fetcher import URLFetcher
 from .url_cache import URLCache
 from .content_extractor import ContentExtractor
 from .content_processor import ContentProcessor, ProcessedDocument
+from .scrapingbee_fetcher import ScrapingBeeFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,10 @@ class BuildResult:
     output_directory: str
     build_stats: Dict[str, Any]
     errors: List[str]
+    scrapingbee_rescues: int = 0  # URLs rescued by ScrapingBee
+    scrapingbee_cost: int = 0     # Total ScrapingBee credits used
+    cache_hits: int = 0           # URLs served from cache
+    cache_misses: int = 0         # URLs fetched fresh
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization"""
@@ -43,7 +48,11 @@ class BuildResult:
             'documents_created': self.documents_created,
             'output_directory': self.output_directory,
             'build_stats': self.build_stats,
-            'errors': self.errors
+            'errors': self.errors,
+            'scrapingbee_rescues': self.scrapingbee_rescues,
+            'scrapingbee_cost': self.scrapingbee_cost,
+            'cache_hits': self.cache_hits,
+            'cache_misses': self.cache_misses
         }
 
 
@@ -61,7 +70,8 @@ class KnowledgeBaseBuilder:
                  force_refresh: bool = False,
                  max_workers: int = 20,  # Parallel workers
                  timeout: int = 10,      # Faster timeout
-                 max_retries: int = 2):  # Fewer retries
+                 max_retries: int = 2,   # Fewer retries
+                 use_scrapingbee_fallback: bool = True):  # Enable ScrapingBee fallback
         """
         Initialize knowledge base builder.
 
@@ -75,6 +85,7 @@ class KnowledgeBaseBuilder:
             max_workers: Number of parallel workers for URL processing
             timeout: Timeout per URL in seconds
             max_retries: Maximum retries per URL
+            use_scrapingbee_fallback: Use ScrapingBee for failed URLs
         """
         self.output_dir = output_dir
         self.cache_dir = cache_dir
@@ -85,19 +96,22 @@ class KnowledgeBaseBuilder:
         self.max_workers = max_workers
         self.timeout = timeout
         self.max_retries = max_retries
+        self.use_scrapingbee_fallback = use_scrapingbee_fallback
 
         # Initialize components
         self.url_fetcher = URLFetcher(
             timeout=self.timeout,
             max_retries=self.max_retries,
             retry_delay=1.0,  # Faster retry
-            max_content_size=10*1024*1024  # 10MB limit
+            max_content_size=10*1024*1024,  # 10MB limit
+            verify_ssl=False,  # Ignore SSL certificate errors
+            use_random_user_agents=True  # Rotate user agents
         )
 
         self.url_cache = URLCache(
             cache_dir=cache_dir,
             default_ttl=7*24*3600,  # 7 days
-            max_cache_size=5000  # Cache up to 5000 URLs
+            max_cache_size=15000  # Cache up to 15000 URLs (for full 11K build)
         ) if use_cache else None
 
         self.content_extractor = ContentExtractor(
@@ -110,11 +124,35 @@ class KnowledgeBaseBuilder:
             min_word_count=min_document_words
         )
 
+        # Initialize ScrapingBee fallback if enabled
+        self.scrapingbee_fetcher = None
+        if self.use_scrapingbee_fallback:
+            try:
+                self.scrapingbee_fetcher = ScrapingBeeFetcher(
+                    enable_js=True,        # Enable JS for difficult sites
+                    premium_proxy=True,    # Use premium proxies
+                    timeout=self.timeout + 10  # Give ScrapingBee more time
+                )
+                logger.info("ScrapingBee fallback enabled")
+            except Exception as e:
+                logger.warning(f"ScrapingBee fallback disabled: {e}")
+                self.use_scrapingbee_fallback = False
+
         # Ensure output directory exists
         os.makedirs(output_dir, exist_ok=True)
 
         # Thread lock for cache access
         self._cache_lock = threading.Lock()
+
+        # Counters for ScrapingBee usage
+        self._scrapingbee_rescues = 0
+        self._scrapingbee_cost = 0
+        self._scrapingbee_lock = threading.Lock()
+
+        # Counters for cache usage
+        self._cache_hits = 0
+        self._cache_misses = 0
+        self._cache_stats_lock = threading.Lock()
 
     def build_from_url_file(self, url_file_path: str) -> BuildResult:
         """
@@ -215,7 +253,11 @@ class KnowledgeBaseBuilder:
             documents_created=len(documents),
             output_directory=self.output_dir,
             build_stats=build_stats,
-            errors=errors
+            errors=errors,
+            scrapingbee_rescues=self._scrapingbee_rescues,
+            scrapingbee_cost=self._scrapingbee_cost,
+            cache_hits=self._cache_hits,
+            cache_misses=self._cache_misses
         )
 
         logger.info(f"Knowledge base build complete: {len(documents)} documents created")
@@ -247,23 +289,95 @@ class KnowledgeBaseBuilder:
         """Process a single URL (thread-safe)"""
         try:
             # Fetch content (with thread-safe caching)
+            cache_hit = False
             if self.url_cache:
                 with self._cache_lock:
                     fetch_result = self.url_cache.get(url, force=self.force_refresh)
 
-                if not fetch_result:
+                if fetch_result:
+                    cache_hit = True
+                    with self._cache_stats_lock:
+                        self._cache_hits += 1
+                    logger.info(f"📦 Cache HIT: {url}")
+                else:
+                    with self._cache_stats_lock:
+                        self._cache_misses += 1
+                    logger.info(f"🌐 Cache MISS: {url} - fetching...")
                     fetch_result = self.url_fetcher.fetch(url)
                     if fetch_result.success:
                         with self._cache_lock:
                             self.url_cache.put(url, fetch_result)
+                        logger.info(f"💾 Cached: {url}")
             else:
+                with self._cache_stats_lock:
+                    self._cache_misses += 1
+                logger.info(f"🌐 No cache: {url} - fetching...")
                 fetch_result = self.url_fetcher.fetch(url)
 
             if not fetch_result.success:
-                return {
-                    'document': None,
-                    'error': f"Fetch failed for {url}: {fetch_result.error_message}"
-                }
+                # Try ScrapingBee fallback if enabled
+                if self.use_scrapingbee_fallback and self.scrapingbee_fetcher:
+                    logger.info(f"Regular fetch failed for {url}, trying ScrapingBee fallback...")
+
+                    try:
+                        scrapingbee_result = self.scrapingbee_fetcher.fetch(url)
+
+                        if scrapingbee_result.success:
+                            logger.info(f"ScrapingBee rescue successful for {url} ({scrapingbee_result.api_cost} credits)")
+
+                            # Track ScrapingBee usage
+                            with self._scrapingbee_lock:
+                                self._scrapingbee_rescues += 1
+                                if scrapingbee_result.api_cost:
+                                    self._scrapingbee_cost += scrapingbee_result.api_cost
+
+                            # Convert ScrapingBee result to fetch result format
+                            from .url_fetcher import FetchResult
+                            fetch_result = FetchResult(
+                                url=url,
+                                success=True,
+                                content=scrapingbee_result.content.encode('utf-8'),
+                                content_type=scrapingbee_result.content_type,
+                                encoding='utf-8',
+                                status_code=scrapingbee_result.status_code,
+                                response_time=scrapingbee_result.response_time,
+                                final_url=url
+                            )
+
+                            # Cache the rescued result
+                            if self.url_cache:
+                                with self._cache_lock:
+                                    self.url_cache.put(url, fetch_result)
+                        else:
+                            logger.warning(f"ScrapingBee also failed for {url}: {scrapingbee_result.error_message}")
+
+                            # Cache the failed result with short TTL (24 hours) to avoid retrying soon
+                            if self.url_cache:
+                                with self._cache_lock:
+                                    self.url_cache.put(url, fetch_result, ttl=86400)  # 24 hour TTL for failures
+                                logger.info(f"🚫 Cached failed URL (24h TTL): {url}")
+
+                            return {
+                                'document': None,
+                                'error': f"Both regular and ScrapingBee fetch failed for {url}: {fetch_result.error_message} | ScrapingBee: {scrapingbee_result.error_message}"
+                            }
+                    except Exception as e:
+                        logger.error(f"ScrapingBee fallback error for {url}: {e}")
+                        return {
+                            'document': None,
+                            'error': f"Fetch failed for {url}: {fetch_result.error_message} | ScrapingBee error: {str(e)}"
+                        }
+                else:
+                    # Cache the failed result with short TTL (24 hours) to avoid retrying soon
+                    if self.url_cache:
+                        with self._cache_lock:
+                            self.url_cache.put(url, fetch_result, ttl=86400)  # 24 hour TTL for failures
+                        logger.info(f"🚫 Cached failed URL (24h TTL): {url}")
+
+                    return {
+                        'document': None,
+                        'error': f"Fetch failed for {url}: {fetch_result.error_message}"
+                    }
 
             # Extract content
             extract_result = self.content_extractor.extract_from_fetch_result(fetch_result)

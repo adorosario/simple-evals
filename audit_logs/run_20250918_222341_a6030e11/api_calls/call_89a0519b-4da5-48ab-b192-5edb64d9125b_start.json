@@ -1,0 +1,26 @@
+{
+  "call_id": "89a0519b-4da5-48ab-b192-5edb64d9125b",
+  "run_id": "20250918_222341_a6030e11",
+  "sampler_name": "OpenAI_Vanilla",
+  "question_id": "a1ee4cce",
+  "question_text": "In which city of Pakistan was Muhammad Rafiq Tarar, a Pakistani politician, born?",
+  "request_data": {
+    "message_list": [
+      {
+        "role": "user",
+        "content": "In which city of Pakistan was Muhammad Rafiq Tarar, a Pakistani politician, born?"
+      }
+    ],
+    "sampler_config": {
+      "model": "gpt-4o-mini",
+      "system_message": "You are a helpful assistant. Answer questions based on your training knowledge.",
+      "temperature": 0.0,
+      "max_tokens": 1024
+    },
+    "question_preview": "In which city of Pakistan was Muhammad Rafiq Tarar, a Pakistani politician, born?"
+  },
+  "api_endpoint": "api.openai.com/chat/completions",
+  "model_used": "gpt-4o-mini",
+  "started_at": "2025-09-18T23:26:59.724645+00:00",
+  "start_time_unix": 1758238019.7278802
+}

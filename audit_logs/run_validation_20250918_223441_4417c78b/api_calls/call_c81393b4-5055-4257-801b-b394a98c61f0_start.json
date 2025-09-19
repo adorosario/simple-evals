@@ -1,0 +1,26 @@
+{
+  "call_id": "c81393b4-5055-4257-801b-b394a98c61f0",
+  "run_id": "validation_20250918_223441_4417c78b",
+  "sampler_name": "OpenAI_Vanilla",
+  "question_id": "54d015e9",
+  "question_text": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?",
+  "request_data": {
+    "message_list": [
+      {
+        "role": "user",
+        "content": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?"
+      }
+    ],
+    "sampler_config": {
+      "model": "gpt-4o-mini",
+      "system_message": "You are a helpful assistant. Answer questions based on your training knowledge.",
+      "temperature": 0.0,
+      "max_tokens": 1024
+    },
+    "question_preview": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?"
+  },
+  "api_endpoint": "api.openai.com/chat/completions",
+  "model_used": "gpt-4o-mini",
+  "started_at": "2025-09-18T22:34:50.797668+00:00",
+  "start_time_unix": 1758234890.797673
+}

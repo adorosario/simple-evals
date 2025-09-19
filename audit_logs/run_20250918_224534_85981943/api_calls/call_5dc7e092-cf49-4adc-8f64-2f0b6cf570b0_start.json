@@ -1,0 +1,26 @@
+{
+  "call_id": "5dc7e092-cf49-4adc-8f64-2f0b6cf570b0",
+  "run_id": "20250918_224534_85981943",
+  "sampler_name": "OpenAI_Vanilla",
+  "question_id": "8cf5381a",
+  "question_text": "While Henri d'Angoul\u00eame served as the governor of Provence, who was his secretary?",
+  "request_data": {
+    "message_list": [
+      {
+        "role": "user",
+        "content": "While Henri d'Angoul\u00eame served as the governor of Provence, who was his secretary?"
+      }
+    ],
+    "sampler_config": {
+      "model": "gpt-4o-mini",
+      "system_message": "You are a helpful assistant. Answer questions based on your training knowledge.",
+      "temperature": 0.0,
+      "max_tokens": 1024
+    },
+    "question_preview": "While Henri d'Angoul\u00eame served as the governor of Provence, who was his secretary?"
+  },
+  "api_endpoint": "api.openai.com/chat/completions",
+  "model_used": "gpt-4o-mini",
+  "started_at": "2025-09-18T22:46:34.636330+00:00",
+  "start_time_unix": 1758235594.6363358
+}

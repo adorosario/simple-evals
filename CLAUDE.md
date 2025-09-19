@@ -4,24 +4,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-### Running Evaluations
+### IMPORTANT: Docker-Only Environment
+**ALL COMMANDS MUST BE RUN IN DOCKER** - The host system does not have Python/dependencies installed.
 
-**Command-line interface:**
+**Running Evaluations:**
 ```bash
-python -m simple_evals --list-models                    # List available models
-python -m simple_evals --model <model_name>             # Run evals on specific model
-python -m simple_evals --model <model_name> --examples <num> --debug  # Debug mode with limited examples
+docker compose run --rm simple-evals python -m simple_evals --list-models                    # List available models
+docker compose run --rm simple-evals python -m simple_evals --model <model_name>             # Run evals on specific model
+docker compose run --rm simple-evals python -m simple_evals --model <model_name> --examples <num> --debug  # Debug mode with limited examples
 ```
 
 **API server:**
 ```bash
-python main.py                                          # Start FastAPI server on port 8000
+docker compose up simple-evals                          # Start FastAPI server on port 8000
 ```
 
-**Installation:**
+**Running tests:**
 ```bash
-pip install -r requirements.txt                         # Install dependencies
+docker compose run --rm simple-evals python -m pytest <test_file> -v
 ```
+
+**Running scripts:**
+```bash
+docker compose run --rm simple-evals python scripts/<script_name>.py
+```
+
+**Installation/Dependencies:**
+Dependencies are managed via Docker - no local installation needed.
 
 ## Architecture
 

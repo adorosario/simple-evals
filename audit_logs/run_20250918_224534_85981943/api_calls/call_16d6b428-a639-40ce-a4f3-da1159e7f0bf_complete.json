@@ -1,0 +1,50 @@
+{
+  "call_id": "16d6b428-a639-40ce-a4f3-da1159e7f0bf",
+  "run_id": "20250918_224534_85981943",
+  "sampler_name": "OpenAI_Vanilla",
+  "question_id": "6c4a1201",
+  "question_text": "How many more votes did Freeman Freeman-Thomas win than George Sandys in the 1906 Bodmin by-election?",
+  "request_data": {
+    "message_list": [
+      {
+        "role": "user",
+        "content": "How many more votes did Freeman Freeman-Thomas win than George Sandys in the 1906 Bodmin by-election?"
+      }
+    ],
+    "sampler_config": {
+      "model": "gpt-4o-mini",
+      "system_message": "You are a helpful assistant. Answer questions based on your training knowledge.",
+      "temperature": 0.0,
+      "max_tokens": 1024
+    },
+    "question_preview": "How many more votes did Freeman Freeman-Thomas win than George Sandys in the 1906 Bodmin by-election..."
+  },
+  "response_data": {
+    "response_length": 356,
+    "response_preview": "In the 1906 Bodmin by-election, Freeman Freeman-Thomas won with 4,202 votes, while George Sandys received 2,942 votes. To find out how many more votes Freeman-Thomas won than Sandys, you subtract Sand...",
+    "call_duration": 2.6190428733825684
+  },
+  "response_text": "In the 1906 Bodmin by-election, Freeman Freeman-Thomas won with 4,202 votes, while George Sandys received 2,942 votes. To find out how many more votes Freeman-Thomas won than Sandys, you subtract Sandys' votes from Freeman-Thomas' votes:\n\n4,202 - 2,942 = 1,260\n\nFreeman Freeman-Thomas won 1,260 more votes than George Sandys in the 1906 Bodmin by-election.",
+  "timing_metrics": {
+    "start_time_unix": 1758235592.0166042,
+    "start_time_iso": "2025-09-18T22:46:32.016604+00:00",
+    "first_byte_time_unix": 1758235594.6356165,
+    "first_byte_time_iso": "2025-09-18T22:46:34.635617+00:00",
+    "end_time_unix": 1758235594.6359816,
+    "end_time_iso": "2025-09-18T22:46:34.635982+00:00",
+    "total_duration_seconds": 2.619377374649048,
+    "ttfb_seconds": 2.6190123558044434,
+    "ttlb_seconds": 2.619377374649048,
+    "request_preparation_seconds": 0.1
+  },
+  "success": true,
+  "error_message": null,
+  "retry_count": 0,
+  "api_endpoint": "api.openai.com/chat/completions",
+  "model_used": "gpt-4o-mini",
+  "metadata": {
+    "logged_at": "2025-09-18T22:46:34.636049+00:00",
+    "python_version": "3.11.13",
+    "audit_version": "1.0"
+  }
+}

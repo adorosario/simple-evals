@@ -1,0 +1,26 @@
+{
+  "call_id": "f8c69186-abb7-4d6f-a017-4cc5c370288f",
+  "run_id": "20250918_224534_85981943",
+  "sampler_name": "OpenAI_Vanilla",
+  "question_id": "b5e3d1db",
+  "question_text": "How old was Aniol Serrasolses when he kayaked for the first time down the largest glacial waterfall ever recorded in Norway?",
+  "request_data": {
+    "message_list": [
+      {
+        "role": "user",
+        "content": "How old was Aniol Serrasolses when he kayaked for the first time down the largest glacial waterfall ever recorded in Norway?"
+      }
+    ],
+    "sampler_config": {
+      "model": "gpt-4o-mini",
+      "system_message": "You are a helpful assistant. Answer questions based on your training knowledge.",
+      "temperature": 0.0,
+      "max_tokens": 1024
+    },
+    "question_preview": "How old was Aniol Serrasolses when he kayaked for the first time down the largest glacial waterfall ..."
+  },
+  "api_endpoint": "api.openai.com/chat/completions",
+  "model_used": "gpt-4o-mini",
+  "started_at": "2025-09-18T22:46:28.729851+00:00",
+  "start_time_unix": 1758235588.7298567
+}

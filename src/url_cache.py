@@ -80,9 +80,11 @@ class URLCache:
         if cache_key not in self.metadata:
             return True
 
-        ttl = ttl or self.default_ttl
-        cached_time = self.metadata[cache_key].get('timestamp', 0)
-        return time.time() - cached_time > ttl
+        metadata = self.metadata[cache_key]
+        # Use custom TTL from metadata if available, otherwise provided ttl or default
+        effective_ttl = metadata.get('custom_ttl') or ttl or self.default_ttl
+        cached_time = metadata.get('timestamp', 0)
+        return time.time() - cached_time > effective_ttl
 
     def _cleanup_old_entries(self):
         """Remove old cache entries if cache is too large"""
@@ -156,13 +158,14 @@ class URLCache:
             self._remove_cache_entry(cache_key)
             return None
 
-    def put(self, url: str, result: FetchResult):
+    def put(self, url: str, result: FetchResult, ttl: Optional[int] = None):
         """
         Cache a fetch result.
 
         Args:
             url: URL that was fetched
             result: FetchResult to cache
+            ttl: Custom TTL for this entry (defaults to default_ttl)
         """
         cache_key = self._get_cache_key(url)
         cache_path = self._get_cache_path(cache_key)
@@ -179,7 +182,8 @@ class URLCache:
                 'last_access': current_time,
                 'success': result.success,
                 'content_size': len(result.content) if result.content else 0,
-                'content_type': result.content_type
+                'content_type': result.content_type,
+                'custom_ttl': ttl  # Store custom TTL if provided
             }
 
             # Cleanup if needed

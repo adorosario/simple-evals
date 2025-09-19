@@ -1,0 +1,49 @@
+{
+  "call_id": "5795e25e-a81f-459b-94f6-abc90a458b37",
+  "run_id": "20250918_222341_a6030e11",
+  "sampler_name": "CustomGPT_RAG",
+  "question_id": "c617766c",
+  "question_text": "How many more votes did Freeman Freeman-Thomas win than George Sandys in the 1906 Bodmin by-election?",
+  "request_data": {
+    "message_list": [
+      {
+        "role": "user",
+        "content": "How many more votes did Freeman Freeman-Thomas win than George Sandys in the 1906 Bodmin by-election?"
+      }
+    ],
+    "sampler_config": {
+      "model_name": "customgpt-rag",
+      "max_tokens": 1024,
+      "temperature": 0.7,
+      "top_p": 0.95,
+      "frequency_penalty": 0.0,
+      "presence_penalty": 0.0,
+      "stop": null
+    },
+    "question_preview": "How many more votes did Freeman Freeman-Thomas win than George Sandys in the 1906 Bodmin by-election..."
+  },
+  "response_data": null,
+  "response_text": null,
+  "timing_metrics": {
+    "start_time_unix": 1758237469.7012935,
+    "start_time_iso": "2025-09-18T23:17:49.701293+00:00",
+    "first_byte_time_unix": null,
+    "first_byte_time_iso": null,
+    "end_time_unix": 1758237821.756179,
+    "end_time_iso": "2025-09-18T23:23:41.756179+00:00",
+    "total_duration_seconds": 352.05488562583923,
+    "ttfb_seconds": null,
+    "ttlb_seconds": 352.05488562583923,
+    "request_preparation_seconds": 0.1
+  },
+  "success": false,
+  "error_message": "Attempt 4: HTTPSConnectionPool(host='app.customgpt.ai', port=443): Max retries exceeded with url: /api/v1/projects/50730/conversations/94632a51-1ffb-45a3-8b94-d3d61bef0df9/messages (Caused by NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x7fab43e17f10>: Failed to resolve 'app.customgpt.ai' ([Errno -3] Temporary failure in name resolution)\"))",
+  "retry_count": 3,
+  "api_endpoint": "customgpt.ai/api",
+  "model_used": "unknown",
+  "metadata": {
+    "logged_at": "2025-09-18T23:23:41.762068+00:00",
+    "python_version": "3.11.13",
+    "audit_version": "1.0"
+  }
+}

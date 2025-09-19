@@ -1,0 +1,114 @@
+{
+  "audit_metadata": {
+    "report_version": "1.0",
+    "generated_at": "2025-09-18T22:46:26.863192+00:00",
+    "run_id": "validation_20250918_223441_4417c78b",
+    "auditor_instructions": {
+      "description": "This audit report contains complete logs of all API calls made during the benchmark",
+      "verification_steps": [
+        "Check run_metadata.json for environment and configuration",
+        "Verify all API calls in api_calls/ directory",
+        "Review timing_metrics for each call",
+        "Check error logs in errors/ directory",
+        "Validate response integrity in responses/ directory"
+      ],
+      "integrity_checks": [
+        "Verify call_ids are unique across all calls",
+        "Check timing consistency (end_time > start_time)",
+        "Validate retry counts and error handling",
+        "Confirm response completeness for successful calls"
+      ]
+    }
+  },
+  "run_summary": {
+    "run_id": "validation_20250918_223441_4417c78b",
+    "start_time": 1758234881.909276,
+    "end_time": 1758235586.8630412,
+    "total_duration_seconds": 704.9537651538849,
+    "environment": {
+      "openai_version": "1.108.0",
+      "anthropic_version": "0.68.0",
+      "python_version": "3.11.13",
+      "timestamp": "2025-09-18T22:34:41.912997+00:00",
+      "environment_variables": {
+        "has_openai_key": true,
+        "has_customgpt_key": true,
+        "has_vector_store_id": true,
+        "openai_vector_store_id": "vs_68cc400755bc81919399649f40ae7f16"
+      }
+    },
+    "samplers_tested": [
+      {
+        "name": "OpenAI_Vanilla",
+        "config": {
+          "model": "gpt-4o-mini",
+          "system_message": "You are a helpful assistant. Answer questions based on your training knowledge.",
+          "temperature": 0.0,
+          "max_tokens": 1024
+        },
+        "added_at": "2025-09-18T22:34:45.792340+00:00"
+      },
+      {
+        "name": "OpenAI_RAG",
+        "config": {
+          "model": "gpt-4o-mini",
+          "vector_store_id": "vs_68cc400755bc81919399649f40ae7f16",
+          "system_message": "You are a helpful assistant. Use the knowledge base to provide accurate, detailed answers.",
+          "temperature": 0.0,
+          "max_tokens": 1024
+        },
+        "added_at": "2025-09-18T22:34:45.797489+00:00"
+      }
+    ],
+    "total_questions_planned": 6,
+    "total_api_calls_made": 6
+  },
+  "aggregate_statistics": {
+    "total_calls": 6,
+    "successful_calls": 6,
+    "failed_calls": 0,
+    "success_rate": 1.0,
+    "sampler_breakdown": {
+      "OpenAI_Vanilla": {
+        "total_calls": 3,
+        "successful_calls": 3,
+        "failed_calls": 0,
+        "total_duration": 6.399771690368652,
+        "errors": [],
+        "avg_ttfb_seconds": 2.1328070163726807,
+        "avg_ttlb_seconds": 2.1332572301228843
+      },
+      "OpenAI_RAG": {
+        "total_calls": 3,
+        "successful_calls": 3,
+        "failed_calls": 0,
+        "total_duration": 694.6617934703827,
+        "errors": [],
+        "avg_ttfb_seconds": 231.5465989112854,
+        "avg_ttlb_seconds": 231.55393115679422
+      }
+    }
+  },
+  "data_locations": {
+    "run_directory": "audit_logs/run_validation_20250918_223441_4417c78b",
+    "api_calls_directory": "audit_logs/run_validation_20250918_223441_4417c78b/api_calls",
+    "responses_directory": "audit_logs/run_validation_20250918_223441_4417c78b/responses",
+    "errors_directory": "audit_logs/run_validation_20250918_223441_4417c78b/errors",
+    "run_metadata_file": "audit_logs/run_validation_20250918_223441_4417c78b/run_metadata.json"
+  },
+  "audit_trail": {
+    "all_call_ids": [
+      "37879a48-9497-4a93-9537-a9a34a17fb85",
+      "1694c11f-90dd-454f-972f-1999cd4f9b2f",
+      "c81393b4-5055-4257-801b-b394a98c61f0",
+      "d71a0321-e64d-4e99-b90b-0f02ec221557",
+      "f120ccba-6770-418f-aaf5-93b262c016a2",
+      "f8caff3c-f941-4a94-86b6-ad0a3d0ac83b"
+    ],
+    "failed_call_ids": [],
+    "retry_summary": {
+      "calls_with_retries": 0,
+      "max_retries_used": 0
+    }
+  }
+}

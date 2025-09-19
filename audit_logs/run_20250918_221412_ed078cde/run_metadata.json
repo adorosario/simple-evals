@@ -1,0 +1,55 @@
+{
+  "run_id": "20250918_221412_ed078cde",
+  "start_time": 1758233652.85959,
+  "start_time_iso": "2025-09-18T22:14:12.859595+00:00",
+  "environment": {
+    "openai_version": "1.108.0",
+    "anthropic_version": "0.68.0",
+    "python_version": "3.11.13",
+    "timestamp": "2025-09-18T22:14:12.867296+00:00",
+    "environment_variables": {
+      "has_openai_key": true,
+      "has_customgpt_key": true,
+      "has_vector_store_id": true,
+      "openai_vector_store_id": "vs_68cc400755bc81919399649f40ae7f16"
+    }
+  },
+  "samplers_tested": [
+    {
+      "name": "CustomGPT_RAG",
+      "config": {
+        "model_name": "customgpt-rag",
+        "max_tokens": 1024,
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "frequency_penalty": 0.0,
+        "presence_penalty": 0.0,
+        "stop": null
+      },
+      "added_at": "2025-09-18T22:14:17.438242+00:00"
+    },
+    {
+      "name": "OpenAI_Vanilla",
+      "config": {
+        "model": "gpt-4o-mini",
+        "system_message": "You are a helpful assistant. Answer questions based on your training knowledge.",
+        "temperature": 0.0,
+        "max_tokens": 1024
+      },
+      "added_at": "2025-09-18T22:14:17.445445+00:00"
+    },
+    {
+      "name": "OpenAI_RAG",
+      "config": {
+        "model": "gpt-4o-mini",
+        "vector_store_id": "vs_68cc400755bc81919399649f40ae7f16",
+        "system_message": "You are a helpful assistant. Use the knowledge base to provide accurate, detailed answers.",
+        "temperature": 0.0,
+        "max_tokens": 1024
+      },
+      "added_at": "2025-09-18T22:14:17.451154+00:00"
+    }
+  ],
+  "total_questions": 6,
+  "audit_version": "1.0"
+}

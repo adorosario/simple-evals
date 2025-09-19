@@ -8,14 +8,29 @@ Handles various content types and provides detailed error information.
 import requests
 import time
 import logging
+import random
+import urllib3
 from typing import Optional, Dict, Any, Tuple
 from dataclasses import dataclass
 from urllib.parse import urlparse
 import mimetypes
 
+# Disable SSL warnings when bypassing certificate verification
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Pool of realistic user agents to rotate through
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/91.0.864.59",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+]
 
 
 @dataclass
@@ -42,7 +57,9 @@ class URLFetcher:
                  max_retries: int = 3,
                  retry_delay: float = 1.0,
                  max_content_size: int = 50 * 1024 * 1024,  # 50MB
-                 user_agent: str = None):
+                 user_agent: str = None,
+                 verify_ssl: bool = False,  # Disable SSL verification by default
+                 use_random_user_agents: bool = True):
         """
         Initialize URL fetcher with configuration.
 
@@ -52,11 +69,15 @@ class URLFetcher:
             retry_delay: Delay between retries in seconds
             max_content_size: Maximum content size to fetch in bytes
             user_agent: Custom user agent string
+            verify_ssl: Whether to verify SSL certificates
+            use_random_user_agents: Whether to rotate through different user agents
         """
         self.timeout = timeout
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.max_content_size = max_content_size
+        self.verify_ssl = verify_ssl
+        self.use_random_user_agents = use_random_user_agents
         self.user_agent = user_agent or (
             "Mozilla/5.0 (compatible; RAG-Benchmark/1.0; "
             "+https://github.com/adorosario/simple-evals)"
@@ -64,12 +85,28 @@ class URLFetcher:
 
         # Configure session with connection pooling
         self.session = requests.Session()
+
+        # Disable SSL verification if requested
+        if not self.verify_ssl:
+            self.session.verify = False
+
+        # Set initial headers
+        self._update_session_headers()
+
+    def _update_session_headers(self):
+        """Update session headers with potentially random user agent"""
+        if self.use_random_user_agents:
+            current_ua = random.choice(USER_AGENTS)
+        else:
+            current_ua = self.user_agent
+
         self.session.headers.update({
-            'User-Agent': self.user_agent,
+            'User-Agent': current_ua,
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate',
+            'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
         })
 
     def _is_valid_url(self, url: str) -> bool:
@@ -119,6 +156,10 @@ class URLFetcher:
 
         for attempt in range(self.max_retries + 1):
             try:
+                # Update user agent for each retry if using random rotation
+                if self.use_random_user_agents:
+                    self._update_session_headers()
+
                 logger.debug(f"Fetching {url} (attempt {attempt + 1}/{self.max_retries + 1})")
 
                 # Make request with streaming to check content size
@@ -126,7 +167,8 @@ class URLFetcher:
                     url,
                     timeout=self.timeout,
                     stream=True,
-                    allow_redirects=True
+                    allow_redirects=True,
+                    verify=self.verify_ssl
                 )
 
                 # Check content length

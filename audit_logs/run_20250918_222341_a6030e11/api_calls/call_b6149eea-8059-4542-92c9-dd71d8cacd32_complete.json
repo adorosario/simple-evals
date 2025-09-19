@@ -1,0 +1,49 @@
+{
+  "call_id": "b6149eea-8059-4542-92c9-dd71d8cacd32",
+  "run_id": "20250918_222341_a6030e11",
+  "sampler_name": "CustomGPT_RAG",
+  "question_id": "bede1295",
+  "question_text": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?",
+  "request_data": {
+    "message_list": [
+      {
+        "role": "user",
+        "content": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?"
+      }
+    ],
+    "sampler_config": {
+      "model_name": "customgpt-rag",
+      "max_tokens": 1024,
+      "temperature": 0.7,
+      "top_p": 0.95,
+      "frequency_penalty": 0.0,
+      "presence_penalty": 0.0,
+      "stop": null
+    },
+    "question_preview": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?"
+  },
+  "response_data": null,
+  "response_text": null,
+  "timing_metrics": {
+    "start_time_unix": 1758237163.5857747,
+    "start_time_iso": "2025-09-18T23:12:43.585775+00:00",
+    "first_byte_time_unix": null,
+    "first_byte_time_iso": null,
+    "end_time_unix": 1758237469.6855464,
+    "end_time_iso": "2025-09-18T23:17:49.685546+00:00",
+    "total_duration_seconds": 306.09977173805237,
+    "ttfb_seconds": null,
+    "ttlb_seconds": 306.09977173805237,
+    "request_preparation_seconds": 0.1
+  },
+  "success": false,
+  "error_message": "Attempt 4: HTTPSConnectionPool(host='app.customgpt.ai', port=443): Max retries exceeded with url: /api/v1/projects/50730/conversations/94632a51-1ffb-45a3-8b94-d3d61bef0df9/messages (Caused by NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x7fab441c4ad0>: Failed to resolve 'app.customgpt.ai' ([Errno -3] Temporary failure in name resolution)\"))",
+  "retry_count": 3,
+  "api_endpoint": "customgpt.ai/api",
+  "model_used": "unknown",
+  "metadata": {
+    "logged_at": "2025-09-18T23:17:49.698687+00:00",
+    "python_version": "3.11.13",
+    "audit_version": "1.0"
+  }
+}

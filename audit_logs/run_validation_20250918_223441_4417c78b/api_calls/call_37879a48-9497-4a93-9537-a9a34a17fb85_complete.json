@@ -1,0 +1,50 @@
+{
+  "call_id": "37879a48-9497-4a93-9537-a9a34a17fb85",
+  "run_id": "validation_20250918_223441_4417c78b",
+  "sampler_name": "OpenAI_Vanilla",
+  "question_id": "5867db76",
+  "question_text": "In which city of Pakistan was Muhammad Rafiq Tarar, a Pakistani politician, born?",
+  "request_data": {
+    "message_list": [
+      {
+        "role": "user",
+        "content": "In which city of Pakistan was Muhammad Rafiq Tarar, a Pakistani politician, born?"
+      }
+    ],
+    "sampler_config": {
+      "model": "gpt-4o-mini",
+      "system_message": "You are a helpful assistant. Answer questions based on your training knowledge.",
+      "temperature": 0.0,
+      "max_tokens": 1024
+    },
+    "question_preview": "In which city of Pakistan was Muhammad Rafiq Tarar, a Pakistani politician, born?"
+  },
+  "response_data": {
+    "response_length": 62,
+    "response_preview": "Muhammad Rafiq Tarar was born in the city of Gujrat, Pakistan.",
+    "call_duration": 1.3682701587677002
+  },
+  "response_text": "Muhammad Rafiq Tarar was born in the city of Gujrat, Pakistan.",
+  "timing_metrics": {
+    "start_time_unix": 1758234885.7977405,
+    "start_time_iso": "2025-09-18T22:34:45.797740+00:00",
+    "first_byte_time_unix": 1758234887.16589,
+    "first_byte_time_iso": "2025-09-18T22:34:47.165890+00:00",
+    "end_time_unix": 1758234887.1662364,
+    "end_time_iso": "2025-09-18T22:34:47.166236+00:00",
+    "total_duration_seconds": 1.3684959411621094,
+    "ttfb_seconds": 1.3681495189666748,
+    "ttlb_seconds": 1.3684959411621094,
+    "request_preparation_seconds": 0.1
+  },
+  "success": true,
+  "error_message": null,
+  "retry_count": 0,
+  "api_endpoint": "api.openai.com/chat/completions",
+  "model_used": "gpt-4o-mini",
+  "metadata": {
+    "logged_at": "2025-09-18T22:34:47.166296+00:00",
+    "python_version": "3.11.13",
+    "audit_version": "1.0"
+  }
+}

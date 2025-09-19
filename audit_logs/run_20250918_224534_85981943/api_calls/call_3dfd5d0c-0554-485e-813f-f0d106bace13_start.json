@@ -1,0 +1,29 @@
+{
+  "call_id": "3dfd5d0c-0554-485e-813f-f0d106bace13",
+  "run_id": "20250918_224534_85981943",
+  "sampler_name": "CustomGPT_RAG",
+  "question_id": "10850190",
+  "question_text": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?",
+  "request_data": {
+    "message_list": [
+      {
+        "role": "user",
+        "content": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?"
+      }
+    ],
+    "sampler_config": {
+      "model_name": "customgpt-rag",
+      "max_tokens": 1024,
+      "temperature": 0.7,
+      "top_p": 0.95,
+      "frequency_penalty": 0.0,
+      "presence_penalty": 0.0,
+      "stop": null
+    },
+    "question_preview": "Who was Japan's Prime Minister after Ichir\u014d Hatoyama left office on December 23, 1956?"
+  },
+  "api_endpoint": "customgpt.ai/api",
+  "model_used": "unknown",
+  "started_at": "2025-09-18T22:46:00.663910+00:00",
+  "start_time_unix": 1758235560.6639125
+}

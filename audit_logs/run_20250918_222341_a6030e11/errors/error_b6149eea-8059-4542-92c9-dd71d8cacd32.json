@@ -1,0 +1,7 @@
+{
+  "call_id": "b6149eea-8059-4542-92c9-dd71d8cacd32",
+  "error_message": "Attempt 4: HTTPSConnectionPool(host='app.customgpt.ai', port=443): Max retries exceeded with url: /api/v1/projects/50730/conversations/94632a51-1ffb-45a3-8b94-d3d61bef0df9/messages (Caused by NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x7fab441c4ad0>: Failed to resolve 'app.customgpt.ai' ([Errno -3] Temporary failure in name resolution)\"))",
+  "timestamp": "2025-09-18T23:17:49.699757+00:00",
+  "sampler_name": "CustomGPT_RAG",
+  "question_id": "bede1295"
+}
