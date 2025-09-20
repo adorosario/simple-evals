@@ -1,7 +1,0 @@
-Source: http://astro.vaporia.com/start/granat.html
-Title: GRANAT
-Words: 67
-
-================================================================================
-
-GRANAT was a gamma-ray/X-ray space observatory launched by the Soviet Union in 1989, fully functioning until 1994 and partially functioning until 1998. France, Denmark and Bulgaria collaborated. Instruments included: SIGMA - X-ray and soft gamma-ray telescope. ART-P - X-ray telescope. ART-S - X-ray spectrometer. PHEBUS - transient detector. WATCH - collimator/detector of X-rays. KONUS-B - X-ray/gamma-ray detector. TOURNESOL - optical and X-ray/gamma-ray detector to identify optical counterparts.

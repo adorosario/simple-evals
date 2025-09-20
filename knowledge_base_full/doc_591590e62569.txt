@@ -1,7 +1,0 @@
-Source: http://mantodea.speciesfile.org/Common/basic/Taxa.aspx?TaxonNameID=1182397
-Title: species Eremiaphila braueri Krauss, 1902: Mantodea Species File
-Words: 119
-
-================================================================================
-
-Taxa hierarchy species Eremiaphila braueri Krauss, 1902 Ecology:Terrestrial. Terrestrial. Specimen records are available. Citations (6): Krauss. 1902. Anz. Akad. Wiss. Wien 7:1 Werner. 1905. Sber. Akad. Wiss. Wien 114:385 Giglio-Tos. 1921. Genera Insect. 177:7 Giglio-Tos. 1927. Tierreich 50:51 Uvarov. 1939. J. Linn. Soc. Lond. (Zool.) 40:548 Ehrmann. 2002. Mantodea der Welt 138 >> Note: Synonymic catalog Krauss. 1902. Anz. Akad. Wiss. Wien 7:1 Werner. 1905. Sber. Akad. Wiss. Wien 114:385 Giglio-Tos. 1921. Genera Insect. 177:7 Giglio-Tos. 1927. Tierreich 50:51 Uvarov. 1939. J. Linn. Soc. Lond. (Zool.) 40:548 Ehrmann. 2002. Mantodea der Welt 138 >> Note: Synonymic catalog Type specimen information:Type locality: Kind of type: unspecified primary type Type locality: Kind of type: unspecified primary type synonym laevifrons Uvarov, 1922

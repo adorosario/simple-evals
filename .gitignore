@@ -134,3 +134,37 @@ results
 # Knowledge base build artifacts
 cache/
 knowledge_base/
+knowledge_base_*/
+knowledge_base_full/
+knowledge_base_test*/
+
+# Logs and session data
+logs/
+*.log
+*_logs/
+audit_logs/
+checkpoints/
+
+# Data files and test sets
+*_test_set.csv
+*_test_set_*.csv
+*_fixed.csv
+simple_qa_test_*.csv
+test_kb_*/
+
+# Report files
+*_report.txt
+*_report.json
+*_audit_*.txt
+
+# Cache and temporary files
+serper_cache/
+url_cache/
+temp/
+tmp/
+
+# Test files and temporary scripts
+test_*.py
+*_test.py
+*_test_*.py
+urls_test_*.txt

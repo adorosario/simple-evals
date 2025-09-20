@@ -1,1 +1,3 @@
 validators
+requests
+python-dotenv

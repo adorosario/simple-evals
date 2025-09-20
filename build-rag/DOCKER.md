@@ -8,10 +8,13 @@ This documentation explains how to use Docker to build and run the Python script
 
 - [Docker](https://docs.docker.com/get-docker/) must be installed on your system.
 - Ensure your project directory contains the following files:
-  - `pretty_print_csv.py`: Your Python script.
+  - `pretty_print_csv.py`: CSV pretty printing script.
+  - `test_serper.py`: Serper.dev API test script.
+  - `fix_simple_qa_urls.py`: URL fixing script for Simple QA test set.
   - `simple_qa_test_set.csv`: The input CSV file.
   - `Dockerfile`: The Dockerfile for containerizing the application.
-  - `requirements.txt`: List of Python dependencies (empty in this case, as no external libraries are required).
+  - `requirements.txt`: List of Python dependencies.
+  - `.env`: Environment variables (copy from .env.example and add your API keys).
 
 ---
 
@@ -54,8 +57,18 @@ docker run --rm -it -v "$(pwd):/app" pretty-print-csv
 
 Once the container is running, you will be dropped into a Bash shell within the container. From here, you can execute commands like:
 
-- **Run the script:**
+- **Run the scripts:**
   ```bash
+  # Test Serper.dev API
+  python test_serper.py
+
+  # Fix URLs in Simple QA test set (dry run first)
+  python fix_simple_qa_urls.py --dry-run
+
+  # Actually fix the URLs
+  python fix_simple_qa_urls.py
+
+  # Pretty print CSV
   python pretty_print_csv.py
   ```
 
@@ -106,9 +119,13 @@ This will stop and remove the container because of the `--rm` option.
    docker run --rm -it -v "$(pwd):/app" pretty-print-csv
    ```
 
-3. **Run the script inside the container:**
+3. **Run scripts inside the container:**
    ```bash
-   python pretty_print_csv.py
+   # Test API first
+   python test_serper.py
+
+   # Fix URLs with dry run
+   python fix_simple_qa_urls.py --dry-run
    ```
 
 4. **Exit the container:**

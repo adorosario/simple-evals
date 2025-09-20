@@ -1,7 +1,0 @@
-Source: https://corpus.quran.com/translation.jsp?chapter=80&verse=29
-Title: The Quranic Arabic Corpus - Translation
-Words: 139
-
-================================================================================
-
-Welcome to the Quranic Arabic Corpus, an annotated linguistic resource for the Holy Quran. This page shows seven parallel translations in English for the 29th verse of chapter 80 (sūrat ʿabasa). Click on the Arabic text to below to see word by word details of the verse's morphology. Chapter (80) sūrat ʿabasa (He frowned) Sahih International: And olive and palm trees Pickthall: And olive-trees and palm-trees Yusuf Ali: And Olives and Dates, Shakir: And the olive and the palm, Muhammad Sarwar: olives, dates, Mohsin Khan: And olives and date-palms, Arberry: and olives, and palms, Quran Recitation by Saad Al-Ghamadi Verse 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 Verse (80:29) Morphology - description of each Arabic word Dependency graph - syntactic analysis (i'rāb) for verse (80:29)

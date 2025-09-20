@@ -1,7 +1,0 @@
-Source: https://data.worldbank.org/indicator/ER.H2O.INTR.PC
-Title: Renewable internal freshwater resources per capita (cubic meters) | Data
-Words: 98
-
-================================================================================
-
-Renewable internal freshwater resources per capita (cubic meters)AQUASTAT - FAO's Global Information System on Water and Agriculture, Food and Agriculture Organization of the United Nations ( FAO ), uri: data.apps.fao.org/aquastat, publisher: Food and Agriculture Organization of the United Nations ( FAO ), data accessed: 20240529License : CC BY-4.0 Renewable internal freshwater resources per capita (cubic meters) AQUASTAT - FAO's Global Information System on Water and Agriculture, Food and Agriculture Organization of the United Nations ( FAO ), uri: data.apps.fao.org/aquastat, publisher: Food and Agriculture Organization of the United Nations ( FAO ), data accessed: 20240529 License : CC BY-4.0

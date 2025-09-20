@@ -1,8 +1,25 @@
-version: '3.8'
-
 services:
+  # Default interactive service - runs when you do "docker compose up"
+  default:
+    build:
+      context: .
+      tags:
+        - simple-evals:latest
+    image: simple-evals:latest
+    container_name: simple-evals-interactive
+    volumes:
+      - .:/app
+      - ./results:/app/results
+      - ./.env:/app/.env
+    env_file:
+      - .env
+    working_dir: /app
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+
   simple-evals:
-    build: .
+    image: simple-evals:latest
     container_name: simple-evals-benchmark
     volumes:
       # Map current directory to /app for live changes
@@ -23,7 +40,7 @@ services:
 
   # Service for running the FastAPI server
   api-server:
-    build: .
+    image: simple-evals:latest
     container_name: simple-evals-api
     volumes:
       - .:/app
@@ -40,7 +57,7 @@ services:
 
   # Service for interactive shell
   shell:
-    build: .
+    image: simple-evals:latest
     container_name: simple-evals-shell
     volumes:
       - .:/app

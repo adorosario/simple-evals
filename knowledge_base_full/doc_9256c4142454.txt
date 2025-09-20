@@ -1,7 +1,0 @@
-Source: http://mantodea.speciesfile.org/Common/basic/Taxa.aspx?TaxonNameID=1182407
-Title: species Eremiaphila cycloptera Uvarov, 1939: Mantodea Species File
-Words: 94
-
-================================================================================
-
-Taxa hierarchy species Eremiaphila cycloptera Uvarov, 1939 Ecology:Terrestrial. Terrestrial. Specimen records are available. Citations: Uvarov. 1939. J. Linn. Soc. Lond. (Zool.) 40:550 Marshall. 1975. Bull. Brit. Mus. (Nat. Hist.) Ent. 31(8):312 >> Note: Type data Ehrmann. 2002. Mantodea der Welt 138 >> Note: Synonymic catalog Uvarov. 1939. J. Linn. Soc. Lond. (Zool.) 40:550 Marshall. 1975. Bull. Brit. Mus. (Nat. Hist.) Ent. 31(8):312 >> Note: Type data Ehrmann. 2002. Mantodea der Welt 138 >> Note: Synonymic catalog Type specimen information:Type locality: Kind of type: unspecified primary type Type locality: Kind of type: unspecified primary type

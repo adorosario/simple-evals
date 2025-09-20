@@ -1,0 +1,36 @@
+# Exclude large data directories from Docker build
+cache/
+knowledge_base_full/
+knowledge_base_*/
+test_kb_*/
+
+# Exclude logs and temporary files
+*.log
+audit_logs/
+results/
+checkpoints/
+
+# Exclude git and other VCS
+.git/
+.gitignore
+
+# Exclude environment files
+.env
+.env.*
+
+# Exclude Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Exclude IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Exclude OS files
+.DS_Store
+Thumbs.db
