@@ -257,6 +257,54 @@ class URLCache:
                 urls.append(entry['url'])
         return sorted(urls)
 
+    def rebuild_metadata(self):
+        """
+        Rebuild metadata from existing cache files.
+        This fixes cases where cache files exist but metadata is missing.
+        """
+        logger.info("Rebuilding cache metadata from existing files...")
+
+        cache_files = list(self.cache_dir.glob("*.pkl"))
+        existing_metadata_count = len(self.metadata)
+        rebuilt_count = 0
+
+        for cache_file in cache_files:
+            cache_key = cache_file.stem  # filename without .pkl extension
+
+            # Skip if metadata already exists
+            if cache_key in self.metadata:
+                continue
+
+            try:
+                # Load the cached result to get URL and other info
+                with open(cache_file, 'rb') as f:
+                    result = pickle.load(f)
+
+                # Extract file stats
+                file_stats = cache_file.stat()
+
+                # Rebuild metadata entry
+                self.metadata[cache_key] = {
+                    'url': result.url if hasattr(result, 'url') else 'unknown',
+                    'timestamp': file_stats.st_mtime,
+                    'last_access': file_stats.st_atime,
+                    'success': result.success,
+                    'content_size': len(result.content) if result.content else 0,
+                    'content_type': result.content_type,
+                    'custom_ttl': None  # Unknown for rebuilt entries
+                }
+                rebuilt_count += 1
+
+            except Exception as e:
+                logger.warning(f"Failed to rebuild metadata for {cache_file}: {e}")
+                continue
+
+        # Save the rebuilt metadata
+        self._save_metadata()
+
+        logger.info(f"Metadata rebuild complete: {existing_metadata_count} existing + {rebuilt_count} rebuilt = {len(self.metadata)} total")
+        return rebuilt_count
+
 
 class CachedURLFetcher:
     """
