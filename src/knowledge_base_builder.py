@@ -72,7 +72,8 @@ class KnowledgeBaseBuilder:
                  max_workers: int = 20,  # Parallel workers
                  timeout: int = 10,      # Faster timeout
                  max_retries: int = 2,   # Fewer retries
-                 use_scrapingbee_fallback: bool = True):  # Enable ScrapingBee fallback
+                 use_scrapingbee_fallback: bool = True,  # Enable ScrapingBee fallback
+                 batch_size: Optional[int] = None):  # Batch size for memory control
         """
         Initialize knowledge base builder.
 
@@ -97,6 +98,7 @@ class KnowledgeBaseBuilder:
         self.max_workers = max_workers
         self.timeout = timeout
         self.max_retries = max_retries
+        self.batch_size = batch_size or min(max_workers * 4, 100)
         self.use_scrapingbee_fallback = use_scrapingbee_fallback
 
         # Initialize components
@@ -203,74 +205,113 @@ class KnowledgeBaseBuilder:
 
         logger.info(f"Building knowledge base from {len(urls)} URLs using {self.max_workers} workers")
 
-        # Initialize tracking
+        # Initialize tracking with memory-efficient approach
         total_urls = len(urls)
-        documents = []
-        errors = []
+        documents_created = 0
+        error_count = 0
+        batch_size = self.batch_size  # Use configurable batch size
 
-        # Process URLs in parallel
+        # Initialize incremental stats file
+        stats_file = os.path.join(self.output_dir, 'build_metadata_partial.jsonl')
+        os.makedirs(self.output_dir, exist_ok=True)
+
+        # Process URLs in batches to control memory usage
         with self.url_fetcher:
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                # Submit all URL processing jobs
-                future_to_url = {
-                    executor.submit(self._process_single_url, url): url
-                    for url in urls
-                }
+                for batch_start in range(0, total_urls, batch_size):
+                    batch_end = min(batch_start + batch_size, total_urls)
+                    batch_urls = urls[batch_start:batch_end]
 
-                # Process completed jobs
-                completed = 0
-                for future in as_completed(future_to_url):
-                    url = future_to_url[future]
-                    completed += 1
+                    logger.info(f"Processing batch {batch_start}-{batch_end-1} ({len(batch_urls)} URLs)")
 
-                    try:
-                        result = future.result()
-                        if result['document']:
-                            documents.append(result['document'])
-                        if result['error']:
-                            errors.append(result['error'])
+                    # Submit batch jobs
+                    future_to_url = {
+                        executor.submit(self._process_single_url, url): url
+                        for url in batch_urls
+                    }
 
-                        # Progress reporting
-                        if completed % 50 == 0 or completed == total_urls:
-                            logger.info(f"Progress: {completed}/{total_urls} URLs processed, "
-                                       f"{len(documents)} documents created")
+                    # Process batch results
+                    batch_completed = 0
+                    for future in as_completed(future_to_url):
+                        url = future_to_url[future]
+                        batch_completed += 1
 
-                    except Exception as e:
-                        error_msg = f"Unexpected error processing {url}: {str(e)}"
-                        errors.append(error_msg)
-                        logger.error(error_msg)
+                        try:
+                            result = future.result()
+                            if result['document']:
+                                # Save document immediately to avoid memory accumulation
+                                doc = result['document']
+                                self.content_processor.save_single_document(doc, self.output_dir)
 
-        # Calculate final stats
-        successful_fetches = total_urls - len([e for e in errors if 'Fetch failed' in e])
-        successful_extractions = total_urls - len([e for e in errors if 'Extraction failed' in e])
-        successful_processing = len(documents)
+                                # Write stats immediately to file instead of accumulating in memory
+                                stat_entry = {
+                                    'url': doc.url,
+                                    'title': doc.title,
+                                    'word_count': doc.word_count,
+                                    'filename': doc.filename
+                                }
+                                with open(stats_file, 'a', encoding='utf-8') as f:
+                                    f.write(json.dumps(stat_entry) + '\n')
+                                documents_created += 1
 
-        # Save documents to files
-        logger.info(f"Saving {len(documents)} documents to {self.output_dir}")
-        self.content_processor.save_documents_to_directory(documents, self.output_dir)
+                            if result['error']:
+                                error_count += 1
+                                # Only log recent errors, don't accumulate all
+                                if error_count <= 100:  # Limit error storage
+                                    logger.error(f"Error #{error_count}: {result['error']}")
 
-        # Generate build statistics
-        build_stats = self._generate_build_stats(documents, urls)
+                            # Progress reporting
+                            completed = batch_start + batch_completed
+                            if completed % 50 == 0 or completed == total_urls:
+                                logger.info(f"Progress: {completed}/{total_urls} URLs processed, "
+                                           f"{documents_created} documents created, {error_count} errors")
 
-        # Save build metadata
-        self._save_build_metadata(build_stats, errors)
+                        except Exception as e:
+                            error_count += 1
+                            error_msg = f"Unexpected error processing {url}: {str(e)}"
+                            if error_count <= 100:  # Limit error storage
+                                logger.error(f"Error #{error_count}: {error_msg}")
+
+                    # Clear batch references to free memory
+                    del future_to_url
+
+        # Calculate final stats (simplified without error analysis since we limited error storage)
+        successful_processing = documents_created
+        estimated_fetches = total_urls - error_count  # Rough estimate
+        successful_fetches = estimated_fetches
+        successful_extractions = estimated_fetches
+
+        logger.info(f"Documents saved incrementally: {documents_created} files created")
+
+        # Generate build statistics from incremental stats file
+        build_stats = self._generate_build_stats_from_file(stats_file, urls)
+
+        # Save build metadata with limited error info
+        limited_errors = [f"Total errors encountered: {error_count}"]
+        self._save_build_metadata(build_stats, limited_errors)
+
+        # Clean up partial stats file
+        try:
+            os.remove(stats_file)
+        except OSError:
+            pass
 
         result = BuildResult(
             total_urls=total_urls,
             successful_fetches=successful_fetches,
             successful_extractions=successful_extractions,
             successful_processing=successful_processing,
-            documents_created=len(documents),
+            documents_created=documents_created,
             output_directory=self.output_dir,
             build_stats=build_stats,
-            errors=errors,
+            errors=limited_errors,
             scrapingbee_rescues=self._scrapingbee_rescues,
             scrapingbee_cost=self._scrapingbee_cost,
             cache_hits=self._cache_hits,
             cache_misses=self._cache_misses
         )
 
-        logger.info(f"Knowledge base build complete: {len(documents)} documents created")
+        logger.info(f"Knowledge base build complete: {documents_created} documents created")
         return result
 
     def _load_urls_from_file(self, url_file_path: str) -> List[str]:
@@ -325,8 +366,11 @@ class KnowledgeBaseBuilder:
                 fetch_result = self.url_fetcher.fetch(url)
 
             if not fetch_result.success:
-                # Try ScrapingBee fallback if enabled
-                if self.use_scrapingbee_fallback and self.scrapingbee_fetcher:
+                if cache_hit:
+                    logger.info(f"🚫 Cached failure for {url} - skipping ScrapingBee (already attempted)")
+
+                # Try ScrapingBee fallback if enabled, but only for fresh failures (not cached failures)
+                elif self.use_scrapingbee_fallback and self.scrapingbee_fetcher:
                     logger.info(f"Regular fetch failed for {url}, trying ScrapingBee fallback...")
 
                     try:
@@ -436,6 +480,106 @@ class KnowledgeBaseBuilder:
             'max_words': max(doc.word_count for doc in documents),
             'url_content_types': content_types,
             'success_rate': len(documents) / len(urls),
+            'ready_for_openai_upload': True
+        }
+
+        return stats
+
+    def _generate_build_stats_from_file(self, stats_file: str, urls: List[str]) -> Dict[str, Any]:
+        """Generate build statistics from incremental stats file (memory-efficient)"""
+        if not os.path.exists(stats_file):
+            return {'error': 'No documents created'}
+
+        total_words = 0
+        total_docs = 0
+        word_counts = []
+
+        # Stream through the file to avoid loading all into memory
+        try:
+            with open(stats_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip():
+                        stat = json.loads(line.strip())
+                        word_count = stat.get('word_count', 0)
+                        total_words += word_count
+                        word_counts.append(word_count)
+                        total_docs += 1
+        except (json.JSONDecodeError, FileNotFoundError):
+            return {'error': 'Invalid stats file'}
+
+        if total_docs == 0:
+            return {'error': 'No documents created'}
+
+        # Estimate characters and calculate basic stats
+        estimated_chars = total_words * 6  # Rough estimate
+        avg_words = total_words / total_docs
+        avg_chars = estimated_chars / total_docs
+
+        # Basic content type analysis from URLs (simplified)
+        content_types = {}
+        for url in urls[:1000]:  # Limit to first 1000 to avoid memory issues
+            ext = 'html'
+            if '.' in url and '/' in url:
+                path_part = url.split('/')[-1]
+                if '.' in path_part:
+                    ext = path_part.split('.')[-1].lower()[:10]
+            content_types[ext] = content_types.get(ext, 0) + 1
+
+        # Calculate min/max/median efficiently for large datasets
+        word_counts.sort()
+        median_words = word_counts[len(word_counts) // 2] if word_counts else 0
+
+        stats = {
+            'total_documents': total_docs,
+            'total_words': total_words,
+            'total_characters': estimated_chars,
+            'avg_words_per_doc': avg_words,
+            'avg_chars_per_doc': avg_chars,
+            'min_words_per_doc': min(word_counts) if word_counts else 0,
+            'max_words_per_doc': max(word_counts) if word_counts else 0,
+            'median_words_per_doc': median_words,
+            'content_types': content_types,
+            'build_type': 'memory_optimized',
+            'note': f'Stats generated from {total_docs} documents using streaming approach'
+        }
+
+        return stats
+
+    def _generate_build_stats_from_stats(self, document_stats: List[Dict[str, Any]], urls: List[str]) -> Dict[str, Any]:
+        """Generate comprehensive build statistics from lightweight document stats"""
+        if not document_stats:
+            return {'error': 'No documents created'}
+
+        total_words = sum(stat['word_count'] for stat in document_stats)
+        # Note: We don't have character count in lightweight stats, estimate from words
+        estimated_chars = total_words * 6  # Rough estimate: avg 6 chars per word
+
+        # Content type analysis from URLs
+        content_types = {}
+        for url in urls:
+            if '.' in url and '/' in url:
+                # Get extension from the path part, not domain
+                path_part = url.split('/')[-1]
+                if '.' in path_part:
+                    ext = path_part.split('.')[-1].lower()[:20]  # Limit length
+                else:
+                    ext = 'html'
+            else:
+                ext = 'html'
+            content_types[ext] = content_types.get(ext, 0) + 1
+
+        word_counts = [stat['word_count'] for stat in document_stats]
+
+        stats = {
+            'total_documents': len(document_stats),
+            'total_words': total_words,
+            'total_characters': estimated_chars,
+            'avg_words_per_doc': total_words / len(document_stats),
+            'avg_chars_per_doc': estimated_chars / len(document_stats),
+            'min_words': min(word_counts),
+            'max_words': max(word_counts),
+            'url_content_types': content_types,
+            'success_rate': len(document_stats) / len(urls),
             'ready_for_openai_upload': True
         }
 

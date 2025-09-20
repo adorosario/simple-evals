@@ -110,6 +110,16 @@ class ContentProcessor:
         logger.info(f"Processed {len(documents)} documents from {len(extracted_contents)} extracted contents")
         return documents
 
+    def save_single_document(self, document: ProcessedDocument, output_dir: str):
+        """Save a single processed document to directory as text file"""
+        import os
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        filepath = os.path.join(output_dir, document.filename)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(document.to_text_file())
+
     def save_documents_to_directory(self, documents: List[ProcessedDocument], output_dir: str):
         """Save processed documents to directory as text files"""
         import os

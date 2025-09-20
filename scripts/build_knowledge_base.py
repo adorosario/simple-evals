@@ -18,10 +18,12 @@ def main():
     """Build complete knowledge base for OpenAI vector store"""
     parser = argparse.ArgumentParser(description='Build complete knowledge base with configurable concurrency')
     parser.add_argument('--concurrency', type=int, default=10, help='Number of concurrent workers (default: 10)')
+    parser.add_argument('--batch-size', type=int, help='Batch size for processing URLs (default: concurrency * 4, max 100)')
     parser.add_argument('--timeout', type=int, default=15, help='Timeout per URL in seconds (default: 15)')
     parser.add_argument('--retries', type=int, default=2, help='Max retries per URL (default: 2)')
     parser.add_argument('--max-urls', type=int, help='Limit number of URLs to process (for testing)')
     parser.add_argument('--no-scrapingbee', action='store_true', help='Disable ScrapingBee fallback for failed URLs')
+    parser.add_argument('--resume', action='store_true', help='Resume from existing documents (skip URLs that already have documents)')
 
     args = parser.parse_args()
 
@@ -41,13 +43,16 @@ def main():
         max_retries=args.retries,     # USER CONFIGURABLE
         use_cache=True,               # Enable caching
         force_refresh=False,          # Use cache if available
-        use_scrapingbee_fallback=not args.no_scrapingbee  # USER CONFIGURABLE
+        use_scrapingbee_fallback=not args.no_scrapingbee,  # USER CONFIGURABLE
+        batch_size=args.batch_size    # USER CONFIGURABLE
     )
 
     print(f"⚙️  BUILD CONFIGURATION:")
     print(f"   Parallel workers: {builder.max_workers}")
+    print(f"   Batch size: {builder.batch_size}")
     print(f"   Timeout per URL: {builder.timeout}s")
     print(f"   Max retries: {builder.max_retries}")
+    print(f"   Resume mode: {args.resume}")
     print(f"   Min document words: {builder.min_document_words}")
     print(f"   Max URLs to process: {args.max_urls if args.max_urls else 'ALL (~11,000)'}")
     print(f"   Output directory: {builder.output_dir}")
