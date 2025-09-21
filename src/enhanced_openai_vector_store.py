@@ -547,15 +547,30 @@ class EnhancedOpenAIVectorStoreManager:
         logger.info(f"Creating vector store '{store_name}' with {len(successful_file_ids)} files...")
 
         try:
-            # Create the vector store
-            vector_store = self.client.vector_stores.create(
-                name=store_name,
-                file_ids=successful_file_ids
-            )
-
+            # Create empty vector store first (OpenAI limits initial file_ids to 100)
+            vector_store = self.client.vector_stores.create(name=store_name)
             logger.info(f"Vector store created: {vector_store.id}")
 
-            # Wait for processing
+            # Add files in batches of 100 (OpenAI's limit for file_ids array)
+            batch_size = 100
+            total_batches = (len(successful_file_ids) + batch_size - 1) // batch_size
+
+            for i in range(0, len(successful_file_ids), batch_size):
+                batch_num = i // batch_size + 1
+                batch_file_ids = successful_file_ids[i:i + batch_size]
+
+                logger.info(f"Adding batch {batch_num}/{total_batches}: {len(batch_file_ids)} files to vector store")
+
+                # Add files to vector store using file_batches endpoint
+                file_batch = self.client.vector_stores.file_batches.create(
+                    vector_store_id=vector_store.id,
+                    file_ids=batch_file_ids
+                )
+
+                # Wait for this batch to be processed
+                self._wait_for_file_batch_processing(vector_store.id, file_batch.id)
+
+            # Wait for overall processing
             logger.info("Waiting for vector store processing...")
             processed_store = self._wait_for_vector_store_processing(vector_store.id)
 
@@ -567,6 +582,40 @@ class EnhancedOpenAIVectorStoreManager:
         except Exception as e:
             logger.error(f"Failed to create vector store: {e}")
             raise
+
+    def _wait_for_file_batch_processing(self, vector_store_id: str, batch_id: str, timeout: int = 600) -> None:
+        """Wait for file batch processing to complete"""
+        start_time = time.time()
+        last_status = None
+
+        while time.time() - start_time < timeout:
+            try:
+                batch = self.client.vector_stores.file_batches.retrieve(
+                    vector_store_id=vector_store_id,
+                    batch_id=batch_id
+                )
+
+                if batch.status != last_status:
+                    logger.info(f"File batch status: {batch.status}")
+                    last_status = batch.status
+
+                if batch.status == 'completed':
+                    duration = time.time() - start_time
+                    logger.info(f"File batch processing completed in {duration:.1f}s")
+                    return
+                elif batch.status == 'failed':
+                    raise Exception(f"File batch processing failed")
+                elif batch.status in ['in_progress', 'pending']:
+                    time.sleep(5)  # Check every 5 seconds for batches
+                else:
+                    logger.warning(f"Unknown file batch status: {batch.status}")
+                    time.sleep(5)
+
+            except Exception as e:
+                logger.error(f"Error checking file batch status: {e}")
+                time.sleep(5)
+
+        raise Exception(f"File batch processing timeout after {timeout}s")
 
     def _wait_for_vector_store_processing(self, vector_store_id: str, timeout: int = 1800) -> Any:
         """Wait for vector store processing to complete"""
