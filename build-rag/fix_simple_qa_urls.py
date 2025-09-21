@@ -34,6 +34,7 @@ from collections import defaultdict
 import ast
 import requests
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 # We'll configure logging later after creating the logs directory
@@ -244,22 +245,20 @@ class SerperSearcher:
         else:
             logger.warning(f"No search results returned for: '{query}'")
 
-        # Remove duplicates and sort by confidence
+        # Remove duplicates - no confidence sorting needed
         unique_urls = {}
         for url_info in replacement_urls:
-            # Only keep URLs with positive confidence scores
-            if url_info.confidence_score > 0.0:
-                if url_info.new_url not in unique_urls or url_info.confidence_score > unique_urls[url_info.new_url].confidence_score:
-                    unique_urls[url_info.new_url] = url_info
+            if url_info.new_url not in unique_urls:
+                unique_urls[url_info.new_url] = url_info
 
-        # Sort by confidence score (higher is better)
-        sorted_urls = sorted(unique_urls.values(), key=lambda x: x.confidence_score, reverse=True)
+        # Return URLs in the order Serper provided them (best first)
+        result_urls = list(unique_urls.values())
 
-        logger.info(f"Total unique URLs found after filtering: {len(sorted_urls)}")
-        for i, url_info in enumerate(sorted_urls[:num_results], 1):
-            logger.info(f"  {i}. {url_info.new_url} (confidence: {url_info.confidence_score:.2f})")
+        logger.info(f"Total unique URLs found: {len(result_urls)}")
+        for i, url_info in enumerate(result_urls[:num_results], 1):
+            logger.info(f"  {i}. {url_info.new_url}")
 
-        return sorted_urls[:num_results]
+        return result_urls[:num_results]
 
     def _extract_urls_from_results(self, results: dict, query: str, strategy: str) -> List[ReplacementURL]:
         """Extract URLs from search results and assign confidence scores"""
@@ -278,96 +277,19 @@ class SerperSearcher:
             if not url:
                 continue
 
-            # Calculate confidence score based on various factors
-            confidence = self._calculate_confidence_score(url, title, snippet, i, strategy)
-
             replacement = ReplacementURL(
                 original_url="",  # Will be set later
                 new_url=url,
                 title=title,
                 snippet=snippet,
                 rank=i + 1,
-                confidence_score=confidence
+                confidence_score=1.0  # Always 1.0 - we don't need scoring
             )
 
             urls.append(replacement)
 
         return urls
 
-    def _calculate_confidence_score(self, url: str, title: str, snippet: str, rank: int, strategy: str) -> float:
-        """Calculate confidence score for a URL based on various factors"""
-
-        # CRITICAL: Filter out irrelevant results
-        # Check for blacklisted domains/patterns that indicate irrelevant results
-        blacklist_patterns = [
-            'huggingface.co/datasets',  # Dataset pages
-            'simpleqa',  # SimpleQA-related content
-            'expectedparrot.com',  # Demo sites
-            'github.com/openai/simple-evals',  # Code repositories
-            'news.ycombinator.com',  # Discussion forums about datasets
-            '/pvduy/',  # Specific dataset author
-            'dataset',  # Generic dataset references
-        ]
-
-        # Check URL, title, and snippet for blacklisted patterns
-        content_to_check = f"{url} {title} {snippet}".lower()
-        for pattern in blacklist_patterns:
-            if pattern in content_to_check:
-                logger.warning(f"Filtered out irrelevant result: {url} (contains '{pattern}')")
-                return 0.0  # Completely reject irrelevant results
-
-        score = 0.0
-
-        # Base score inversely proportional to rank (1st result gets highest base score)
-        base_score = max(0.1, 1.0 - (rank * 0.1))
-        score += base_score
-
-        # Bonus for trusted domains (much higher bonuses)
-        trusted_domains = [
-            'wikipedia.org', 'britannica.com', 'edu', 'gov',
-            'archive.org', 'jstor.org', 'springer.com', 'nature.com',
-            'sciencedirect.com', 'ieee.org', 'acm.org', 'nih.gov',
-            'ncbi.nlm.nih.gov', 'doi.org'
-        ]
-
-        domain_bonus = 0.0
-        for domain in trusted_domains:
-            if domain in url.lower():
-                if domain == 'wikipedia.org':
-                    domain_bonus = 0.5  # Highest bonus for Wikipedia
-                elif domain in ['edu', 'gov', 'ieee.org', 'acm.org']:
-                    domain_bonus = 0.4  # High bonus for academic/official sources
-                else:
-                    domain_bonus = 0.3  # Good bonus for other trusted sources
-                break
-
-        score += domain_bonus
-
-        # Bonus for HTTPS
-        if url.startswith('https://'):
-            score += 0.05
-
-        # Strategy-based bonuses
-        if strategy == "exact_question":
-            score += 0.3  # Exact question searches are most reliable (user requested)
-        elif strategy == "main_entity":
-            score += 0.2  # Main entity searches
-        elif strategy == "answer_topic":
-            score += 0.15  # Answer + topic
-        elif strategy == "specific_terms":
-            score += 0.1
-
-        # Title and snippet quality (check for relevance)
-        if title and len(title) > 10:
-            score += 0.05
-        if snippet and len(snippet) > 50:
-            score += 0.05
-
-        # Penalty for very low scores (filter out weak matches)
-        if score < 0.3:
-            return 0.0
-
-        return min(1.0, score)  # Cap at 1.0
 
     def _extract_main_entity(self, question: str, answer: str) -> str:
         """Extract the main entity/subject from question and answer"""
@@ -420,40 +342,6 @@ class SerperSearcher:
         return specific_terms[:5]  # Limit to avoid overly long queries
 
 
-class URLValidator:
-    """Validates URLs by attempting to fetch them"""
-
-    def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        })
-
-    def is_url_accessible(self, url: str, timeout: int = 10) -> Tuple[bool, str]:
-        """Check if URL is accessible"""
-        try:
-            response = self.session.head(url, timeout=timeout, allow_redirects=True)
-            if response.status_code == 200:
-                return True, "OK"
-            elif response.status_code in [301, 302, 303, 307, 308]:
-                return True, f"Redirect ({response.status_code})"
-            else:
-                return False, f"HTTP {response.status_code}"
-
-        except requests.exceptions.Timeout:
-            return False, "Timeout"
-        except requests.exceptions.ConnectionError:
-            return False, "Connection Error"
-        except requests.exceptions.RequestException as e:
-            return False, f"Request Error: {str(e)[:50]}"
-        except Exception as e:
-            return False, f"Unknown Error: {str(e)[:50]}"
-
-    def close(self):
-        """Close the session"""
-        self.session.close()
-
-
 class SimpleQAURLFixer:
     """Main class for fixing URLs in Simple QA test set"""
 
@@ -465,6 +353,7 @@ class SimpleQAURLFixer:
                  serper_api_key: str,
                  max_search_results: int = 10,
                  limit: int = None,
+                 workers: int = 5,
                  dry_run: bool = False):
 
         self.input_csv = input_csv
@@ -473,6 +362,7 @@ class SimpleQAURLFixer:
         self.kb_dir = Path(kb_dir)
         self.max_search_results = max_search_results
         self.limit = limit
+        self.workers = workers
         self.dry_run = dry_run
 
         # Setup logging infrastructure
@@ -482,7 +372,6 @@ class SimpleQAURLFixer:
 
         # Initialize components
         self.searcher = SerperSearcher(serper_api_key, cache_dir="logs/serper_cache")
-        self.validator = URLValidator()
 
         # Load data
         self.cache_metadata = self._load_cache_metadata()
@@ -750,10 +639,10 @@ class SimpleQAURLFixer:
 
         # Search for replacement URLs
         search_query = question
-        search_was_cached = self.searcher.cache.get(f"{search_query}_{self.max_search_results}") is not None
+        search_was_cached = self.searcher.cache.get(f"{search_query}_10") is not None
 
         replacement_candidates = self.searcher.find_replacement_urls(
-            question, topic, answer, self.max_search_results
+            question, topic, answer  # Use default 10 results
         )
 
         # Update stats
@@ -774,18 +663,11 @@ class SimpleQAURLFixer:
                 num_urls_replaced=0
             )
 
-        # Validate replacement URLs
-        validated_replacements = []
-        for candidate in replacement_candidates:
-            is_accessible, reason = self.validator.is_url_accessible(candidate.new_url)
-            if is_accessible:
-                validated_replacements.append(candidate)
-                logger.debug(f"Validated replacement URL: {candidate.new_url}")
-            else:
-                logger.debug(f"Rejected replacement URL {candidate.new_url}: {reason}")
+        # No need to validate URLs - just use them
+        validated_replacements = replacement_candidates
 
         if not validated_replacements:
-            logger.warning(f"Record {record_id}: No valid replacement URLs found")
+            logger.warning(f"Record {record_id}: No replacement URLs found")
             return FixResult(
                 record_id=record_id,
                 question=question,
@@ -802,17 +684,29 @@ class SimpleQAURLFixer:
         for i, replacement in enumerate(validated_replacements, 1):
             logger.info(f"  Replacement {i}: {replacement.new_url} (confidence: {replacement.confidence_score:.2f})")
 
+        # Filter out replacement URLs that already exist in this record
+        existing_urls = set(urls)
+        unique_replacements = []
+        for replacement in validated_replacements:
+            if replacement.new_url not in existing_urls:
+                unique_replacements.append(replacement)
+            else:
+                logger.info(f"🔄 SKIPPED duplicate URL: {replacement.new_url} (already exists in record)")
+
+        logger.info(f"Unique replacements after filtering duplicates: {len(unique_replacements)}")
+
         fixed_urls = urls.copy()
         replacements = []
         replacements_used = 0
 
         logger.info(f"\nReplacing bad URLs:")
         for i, status in enumerate(url_statuses):
-            if status.is_bad and replacements_used < len(validated_replacements):
-                replacement = validated_replacements[replacements_used]
+            if status.is_bad and replacements_used < len(unique_replacements):
+                replacement = unique_replacements[replacements_used]
                 replacement.original_url = status.url
 
                 fixed_urls[i] = replacement.new_url
+                existing_urls.add(replacement.new_url)  # Track newly added URLs to avoid future duplicates
                 replacements.append(replacement)
                 replacements_used += 1
 
@@ -823,7 +717,7 @@ class SimpleQAURLFixer:
                 logger.info(f"    Confidence: {replacement.confidence_score:.2f}")
                 logger.info(f"    Reason original was bad: {status.failure_reason}")
             elif status.is_bad:
-                logger.info(f"❌ COULD NOT REPLACE: {status.url} (no more replacement candidates)")
+                logger.info(f"❌ COULD NOT REPLACE: {status.url} (no more unique replacement candidates)")
             else:
                 logger.info(f"✅ KEPT GOOD URL: {status.url}")
 
@@ -872,70 +766,104 @@ class SimpleQAURLFixer:
 
         return fix_result
 
+    def process_single_record(self, record_data: tuple) -> FixResult:
+        """Process a single record (for parallel processing)"""
+        i, row = record_data
+
+        try:
+            # Parse record
+            metadata = self._parse_metadata_field(row['metadata'])
+            urls = metadata.get('urls', [])
+            topic = metadata.get('topic', 'Unknown')
+            question = row['problem']
+            answer = row['answer']
+
+            # Check if record has any bad URLs
+            url_statuses = [self._analyze_url(url) for url in urls]
+            has_bad_urls = any(status.is_bad for status in url_statuses)
+
+            if not has_bad_urls:
+                # No bad URLs, add original record unchanged
+                return FixResult(
+                    record_id=i + 1,
+                    question=question,
+                    original_urls=urls,
+                    fixed_urls=urls,
+                    replacements=[],
+                    all_urls_fixed=True,
+                    num_urls_replaced=0
+                )
+            else:
+                # Fix URLs for this record
+                return self.fix_urls_for_record(
+                    record_id=i + 1,
+                    question=question,
+                    answer=answer,
+                    topic=topic,
+                    urls=urls
+                )
+
+        except Exception as e:
+            logger.error(f"Error processing record {i + 1}: {e}")
+            # Return empty result on error
+            return FixResult(
+                record_id=i + 1,
+                question="",
+                original_urls=[],
+                fixed_urls=[],
+                replacements=[],
+                all_urls_fixed=False,
+                num_urls_replaced=0
+            )
+
     def process_test_set(self) -> List[FixResult]:
-        """Process the entire test set and fix bad URLs"""
+        """Process the entire test set and fix bad URLs with parallelization"""
         fix_results = []
 
         try:
+            # Read all records first
+            records = []
             with open(self.input_csv, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
-
                 for i, row in enumerate(reader):
-                    # Check limit
                     if self.limit is not None and i >= self.limit:
-                        logger.info(f"Reached limit of {self.limit} records, stopping processing")
                         break
+                    records.append((i, row))
 
+            logger.info(f"Processing {len(records)} records with {self.workers} workers...")
+
+            # Process records in parallel
+            with ThreadPoolExecutor(max_workers=self.workers) as executor:
+                # Submit all tasks
+                future_to_record = {
+                    executor.submit(self.process_single_record, record): record
+                    for record in records
+                }
+
+                # Collect results as they complete
+                completed = 0
+                for future in as_completed(future_to_record):
                     try:
+                        fix_result = future.result()
+                        fix_results.append(fix_result)
+
+                        # Update stats
                         self.stats['total_records'] += 1
-
-                        # Parse record
-                        metadata = self._parse_metadata_field(row['metadata'])
-                        urls = metadata.get('urls', [])
-                        topic = metadata.get('topic', 'Unknown')
-                        answer_type = metadata.get('answer_type', 'Unknown')
-                        question = row['problem']
-                        answer = row['answer']
-
-                        # Check if record has any bad URLs
-                        url_statuses = [self._analyze_url(url) for url in urls]
-                        has_bad_urls = any(status.is_bad for status in url_statuses)
-
-                        if not has_bad_urls:
-                            # No bad URLs, add original record unchanged
-                            fix_result = FixResult(
-                                record_id=i + 1,
-                                question=question,
-                                original_urls=urls,
-                                fixed_urls=urls,
-                                replacements=[],
-                                all_urls_fixed=True,
-                                num_urls_replaced=0
-                            )
-                        else:
+                        if any(self._analyze_url(url).is_bad for url in fix_result.original_urls):
                             self.stats['records_with_bad_urls'] += 1
-
-                            # Fix URLs for this record
-                            fix_result = self.fix_urls_for_record(
-                                record_id=i + 1,
-                                question=question,
-                                answer=answer,
-                                topic=topic,
-                                urls=urls
-                            )
-
                             if fix_result.num_urls_replaced > 0:
                                 self.stats['records_fixed'] += 1
                                 self.stats['total_urls_replaced'] += fix_result.num_urls_replaced
 
-                        fix_results.append(fix_result)
-
-                        # Progress logging
-                        if (i + 1) % 100 == 0:
-                            logger.info(f"Processed {i + 1} records...")
+                        completed += 1
+                        if completed % 100 == 0:
+                            logger.info(f"Completed {completed}/{len(records)} records...")
 
                     except Exception as e:
-                        logger.error(f"Error processing record {i + 1}: {e}")
+                        logger.error(f"Error getting result from future: {e}")
+
+            # Sort results by record_id to maintain order
+            fix_results.sort(key=lambda x: x.record_id)
 
         except FileNotFoundError:
             logger.error(f"Input file not found: {self.input_csv}")
@@ -950,7 +878,8 @@ class SimpleQAURLFixer:
             return
 
         # Create backup of original file
-        backup_path = f"{self.input_csv}.backup_{int(time.time())}"
+        backup_filename = f"{Path(self.input_csv).name}.backup_{int(time.time())}"
+        backup_path = self.logs_dir / backup_filename
         shutil.copy2(self.input_csv, backup_path)
         logger.info(f"Created backup: {backup_path}")
 
@@ -1034,7 +963,7 @@ class SimpleQAURLFixer:
 
     def generate_report(self, fix_results: List[FixResult]):
         """Generate detailed report of fixes"""
-        report_path = f"url_fixing_report_{int(time.time())}.txt"
+        report_path = self.logs_dir / f"url_fixing_report_{int(time.time())}.txt"
 
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write("=" * 80 + "\n")
@@ -1072,7 +1001,7 @@ class SimpleQAURLFixer:
 
     def close(self):
         """Clean up resources"""
-        self.validator.close()
+        pass
 
     def run(self):
         """Main execution method"""
@@ -1157,6 +1086,8 @@ Examples:
                         help='Maximum search results to consider per query (default: 10)')
     parser.add_argument('--limit', type=int, default=None,
                         help='Limit processing to first N records (default: process all)')
+    parser.add_argument('--workers', type=int, default=5,
+                        help='Number of parallel workers (default: 5)')
     parser.add_argument('--dry-run', action='store_true',
                         help='Show what would be done without making changes')
 
@@ -1181,6 +1112,7 @@ Examples:
             serper_api_key=serper_api_key,
             max_search_results=args.max_search_results,
             limit=args.limit,
+            workers=args.workers,
             dry_run=args.dry_run
         )
 
