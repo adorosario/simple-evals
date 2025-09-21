@@ -29,16 +29,22 @@ docker compose run --rm simple-evals python -m pytest <test_file> -v
 docker compose run --rm simple-evals python scripts/<script_name>.py
 ```
 
-**RAG Benchmark (NEW in v1.1.0):**
+**Multi-Provider RAG Benchmark (v2.0.0):**
 ```bash
-# Quick test with 5 questions (debug mode)
-docker compose run --rm simple-evals python rag_benchmark.py --debug
+# Quick debug run with 5 questions
+docker compose run --rm simple-evals python scripts/multi_provider_benchmark.py --debug
 
 # Full benchmark with custom question count
-docker compose run --rm simple-evals python rag_benchmark.py --examples 100
+docker compose run --rm simple-evals python scripts/multi_provider_benchmark.py --examples 100
 
-# Three-way comparison (OpenAI vs CustomGPT vs OpenAI+RAG)
-docker compose run --rm simple-evals python scripts/three_way_rag_benchmark.py
+# Standard benchmark (10 questions per provider)
+docker compose run --rm simple-evals python scripts/multi_provider_benchmark.py
+
+# Dry run to validate configuration
+docker compose run --rm simple-evals python scripts/multi_provider_benchmark.py --dry-run
+
+# Custom configuration
+docker compose run --rm simple-evals python scripts/multi_provider_benchmark.py --examples 50 --max-workers 5 --output-dir custom_results
 ```
 
 **Knowledge Base Management:**
@@ -70,7 +76,7 @@ Each evaluation has its own module (e.g., `mmlu_eval.py`, `math_eval.py`, `gpqa_
 - Defines evaluation-specific logic and scoring
 - Uses common utilities from `common.py`
 
-Available evaluations: `simpleqa`, `mmlu`, `math`, `gpqa`, `mgsm`, `drop`
+Available evaluations: `simpleqa` (only SimpleQA is supported in v2.0.0)
 
 ### Sampler Architecture
 
@@ -90,19 +96,27 @@ All samplers implement the `SamplerBase` interface from `custom_types.py`.
 - **HTML reporting**: Generates detailed HTML reports for each evaluation run
 - **Metric aggregation**: Combines multiple evaluation runs with configurable statistics (mean, std, min, max)
 
-### RAG Framework (v1.1.0)
+### Multi-Provider RAG Framework (v2.0.0)
 
 **Key Components:**
-- **rag_benchmark.py**: Main entry point for RAG vs standard LLM comparison
-- **CustomGPT Integration**: RAG-enabled model interface via CustomGPT API
-- **Knowledge Base Builder**: Automated pipeline for creating vector stores from URLs
-- **Three-way Benchmarks**: Compare OpenAI, CustomGPT, and OpenAI+RAG simultaneously
+- **multi_provider_benchmark.py**: Main entry point for comprehensive RAG provider comparison
+- **Audit Logging System**: Complete traceability of all requests, responses, and evaluations
+- **Leaderboard Generator**: Publication-ready reports with statistical analysis
+- **Parallel Execution**: Provider-level and question-level parallelism for efficient benchmarking
+- **Extensible Architecture**: Easy to add new RAG providers (Ragie, Pinecone Assistant, etc.)
+
+**Enhanced Features:**
+- **GPT-4.1 Standardization**: All providers and LLM-As-A-Judge use gpt-4.1 for consistency
+- **Comprehensive Audit Trail**: Every request/response logged in JSON format
+- **Statistical Analysis**: Confidence intervals, grade assignments, and performance metrics
+- **Debug Mode**: Quick validation with limited examples
+- **Dry Run**: Configuration validation without execution
 
 **RAG Architecture:**
 - Uses OpenAI vector stores for document retrieval
 - Supports ScrapingBee integration for reliable web content extraction
 - Implements robust knowledge base building with caching and failure handling
-- GPT-4o serves as automated judge for evaluation consistency
+- gpt-4.1 serves as automated judge with detailed explanations
 
 ### Environment Variables
 

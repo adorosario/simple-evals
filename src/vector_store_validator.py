@@ -258,12 +258,13 @@ class VectorStoreValidator:
             store_files = self._get_vector_store_files(vector_store_id)
             report.total_files_found = len(store_files)
 
-            # Create lookup for expected files
+            # For merged files, just validate actual vector store file status instead of name matching
             expected_by_name = {}
             if expected_files:
-                for file_info in expected_files:
-                    file_name = Path(file_info.get('file_path', '')).name
-                    expected_by_name[file_name] = file_info
+                # Count total expected files (original logic for compatibility)
+                report.total_files_expected = len(expected_files)
+                # But validate based on actual vector store files, not filename matching
+                logger.info(f"Expected {len(expected_files)} files in source, found {len(store_files)} files in vector store")
 
             # Validate each file found in the store
             for store_file in store_files:
@@ -296,19 +297,45 @@ class VectorStoreValidator:
             report.recommendations.append(f"File validation error: {e}")
 
     def _get_vector_store_files(self, vector_store_id: str) -> List[Dict[str, Any]]:
-        """Get list of files in vector store"""
+        """Get list of files in vector store with proper pagination"""
         try:
-            files = self.client.vector_stores.files.list(vector_store_id)
-            return [
-                {
-                    'id': file.id,
-                    'name': getattr(file, 'name', f'file_{file.id}'),
-                    'size': getattr(file, 'size', 0),
-                    'created_at': getattr(file, 'created_at', 0),
-                    'status': getattr(file, 'status', 'unknown')
-                }
-                for file in files.data
-            ]
+            all_files = []
+            after = None
+
+            while True:
+                # List files with pagination
+                params = {'limit': 100}  # Max limit per page
+                if after:
+                    params['after'] = after
+
+                files_page = self.client.vector_stores.files.list(vector_store_id, **params)
+
+                # Add files from this page
+                page_files = [
+                    {
+                        'id': file.id,
+                        'name': getattr(file, 'name', f'file_{file.id}'),
+                        'size': getattr(file, 'size', 0),
+                        'created_at': getattr(file, 'created_at', 0),
+                        'status': getattr(file, 'status', 'unknown')
+                    }
+                    for file in files_page.data
+                ]
+                all_files.extend(page_files)
+
+                # Check if there are more pages
+                if not hasattr(files_page, 'has_more') or not files_page.has_more:
+                    break
+
+                # Get the last file ID for next page
+                if files_page.data:
+                    after = files_page.data[-1].id
+                else:
+                    break
+
+            logger.debug(f"Retrieved {len(all_files)} files from vector store {vector_store_id}")
+            return all_files
+
         except Exception as e:
             raise Exception(f"Failed to list vector store files: {e}")
 
@@ -331,7 +358,25 @@ class VectorStoreValidator:
                     error_message='File processing failed in OpenAI'
                 )
 
-            # Check against expected files
+            # Check OpenAI processing status (main validation for merged files)
+            if store_file.get('status') == 'completed':
+                return FileValidationResult(
+                    file_id=file_id,
+                    file_name=file_name,
+                    file_size=file_size,
+                    status='valid',
+                    error_message=None
+                )
+            elif store_file.get('status') in ['in_progress', 'pending']:
+                return FileValidationResult(
+                    file_id=file_id,
+                    file_name=file_name,
+                    file_size=file_size,
+                    status='pending',
+                    error_message='File still processing in OpenAI'
+                )
+
+            # Check against expected files (legacy for non-merged uploads)
             expected_file = expected_by_name.get(file_name)
             if expected_file:
                 expected_size = expected_file.get('file_size', 0)

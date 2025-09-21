@@ -168,3 +168,14 @@ test_*.py
 *_test.py
 *_test_*.py
 urls_test_*.txt
+
+# TODO and debug files
+TODO_*.md
+check_*.py
+debug_*.py
+
+# Old benchmark result directories
+rag_benchmark_results_*/
+
+# Build artifacts
+build-rag/

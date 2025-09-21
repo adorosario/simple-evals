@@ -551,8 +551,8 @@ class EnhancedOpenAIVectorStoreManager:
             vector_store = self.client.vector_stores.create(name=store_name)
             logger.info(f"Vector store created: {vector_store.id}")
 
-            # Add files in batches of 100 (OpenAI's limit for file_ids array)
-            batch_size = 100
+            # Add files in very conservative batches due to server errors
+            batch_size = min(5, len(successful_file_ids))
             total_batches = (len(successful_file_ids) + batch_size - 1) // batch_size
 
             for i in range(0, len(successful_file_ids), batch_size):
@@ -570,6 +570,12 @@ class EnhancedOpenAIVectorStoreManager:
                 # Wait for this batch to be processed
                 self._wait_for_file_batch_processing(vector_store.id, file_batch.id)
 
+                # Add delay between batches to reduce API strain
+                if batch_num < total_batches:  # Don't delay after the last batch
+                    delay_seconds = 10
+                    logger.info(f"Waiting {delay_seconds}s before next batch...")
+                    time.sleep(delay_seconds)
+
             # Wait for overall processing
             logger.info("Waiting for vector store processing...")
             processed_store = self._wait_for_vector_store_processing(vector_store.id)
@@ -584,9 +590,11 @@ class EnhancedOpenAIVectorStoreManager:
             raise
 
     def _wait_for_file_batch_processing(self, vector_store_id: str, batch_id: str, timeout: int = 600) -> None:
-        """Wait for file batch processing to complete"""
+        """Wait for file batch processing to complete with resilience for server errors"""
         start_time = time.time()
         last_status = None
+        server_error_count = 0
+        max_server_errors = 5
 
         while time.time() - start_time < timeout:
             try:
@@ -594,6 +602,9 @@ class EnhancedOpenAIVectorStoreManager:
                     vector_store_id=vector_store_id,
                     batch_id=batch_id
                 )
+
+                # Reset server error count on successful API call
+                server_error_count = 0
 
                 if batch.status != last_status:
                     logger.info(f"File batch status: {batch.status}")
@@ -612,8 +623,25 @@ class EnhancedOpenAIVectorStoreManager:
                     time.sleep(5)
 
             except Exception as e:
-                logger.error(f"Error checking file batch status: {e}")
-                time.sleep(5)
+                error_str = str(e).lower()
+
+                # Check if it's a server error (5xx)
+                if any(error_type in error_str for error_type in ['500', '502', '503', '504', 'internal server error', 'bad gateway', 'service unavailable', 'gateway timeout']):
+                    server_error_count += 1
+                    logger.warning(f"Server error #{server_error_count}/{max_server_errors} for batch {batch_id}: {e}")
+
+                    if server_error_count >= max_server_errors:
+                        logger.error(f"Too many server errors ({server_error_count}) for batch {batch_id}, giving up")
+                        raise Exception(f"File batch processing failed due to persistent server errors")
+
+                    # Exponential backoff for server errors
+                    backoff_delay = min(30, 5 * (2 ** server_error_count))
+                    logger.info(f"Waiting {backoff_delay}s before retry due to server error...")
+                    time.sleep(backoff_delay)
+                else:
+                    # Non-server error, log and continue with shorter delay
+                    logger.error(f"Error checking file batch status: {e}")
+                    time.sleep(5)
 
         raise Exception(f"File batch processing timeout after {timeout}s")
 
