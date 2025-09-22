@@ -24,7 +24,7 @@ class MediumBlogPostGenerator:
     Generates professional Medium-style blog posts from benchmark results
     """
 
-    def __init__(self, model: str = "o1-2024-12-17"):  # GPT-5 (o1) for highest quality
+    def __init__(self, model: str = "gpt-5"):  # GPT-5 for highest quality
         self.client = OpenAI()
         self.model = model
 
@@ -168,8 +168,8 @@ class MediumBlogPostGenerator:
                 model=self.model,
                 messages=[
                     {
-                        "role": "system",
-                        "content": """You are a rigorous technical writer with academic standards writing for Medium and Data Science Central.
+                        "role": "user",
+                        "content": f"""You are a rigorous technical writer with academic standards writing for Medium and Data Science Central.
 
 CRITICAL REQUIREMENTS:
 - NEVER hallucinate or invent data points not provided in the user's data
@@ -185,15 +185,13 @@ FORBIDDEN:
 - Making claims not supported by the provided data
 - Inventing benchmark comparisons with other studies
 - Speculating beyond what the data shows
-- Adding external claims or citations not in the data"""
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
+- Adding external claims or citations not in the data
+
+{prompt}"""
                     }
                 ],
-                temperature=0.1,  # Low temperature for consistency and accuracy
-                max_tokens=4000
+                # temperature not supported by o1 models
+                max_completion_tokens=8000
             )
 
             blog_post = response.choices[0].message.content

@@ -42,15 +42,19 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
         self.frequency_penalty = frequency_penalty
         self.presence_penalty = presence_penalty
         self.stop = stop
-        self.session_id = uuid.uuid4()
         self.api_key = os.environ.get("CUSTOMGPT_API_KEY")
         self.project_id = os.environ.get("CUSTOMGPT_PROJECT")
         self.provider_name = "CustomGPT_RAG"
 
+        # Store the actual session ID used for API calls for proper logging
+        self._current_session_id = None
+        self._current_url = None
+        self._current_external_id = None
+
     def _pack_message(self, role: str, content: str):
         return {"role": str(role), "content": content}
 
-    def _make_request(self, message_list: MessageList) -> str:
+    def _make_request(self, message_list: MessageList, question_id: str = None) -> str:
         """
         Make the actual CustomGPT API request with proper error handling and timeouts
         """
@@ -64,7 +68,30 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
         if not prompt:
             raise ValueError("No user message found in message list")
 
-        url = f"https://app.customgpt.ai/api/v1/projects/{self.project_id}/conversations/{self.session_id}/messages"
+        # Generate a new session ID for each request to avoid context contamination
+        session_id = uuid.uuid4()
+
+        # Build query parameters
+        query_params = {
+            "stream": "false",  # Use string for query param
+            "lang": "en"
+        }
+
+        # Add external_id if available
+        if question_id and self.audit_logger:
+            run_id = getattr(self.audit_logger, 'run_id', 'unknown')
+            external_id = f"{run_id}_{question_id}"
+            query_params["external_id"] = external_id
+            self._current_external_id = external_id
+
+        # Build URL with query parameters
+        base_url = f"https://app.customgpt.ai/api/v1/projects/{self.project_id}/conversations/{session_id}/messages"
+        query_string = "&".join([f"{k}={v}" for k, v in query_params.items()])
+        url = f"{base_url}?{query_string}"
+
+        # Store for logging purposes
+        self._current_session_id = str(session_id)
+        self._current_url = url
 
         max_retries = 3
         base_delay = 2.0
@@ -75,10 +102,24 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
                 try:
                     start_time = time.time()
                     print(f"CustomGPT API call starting (attempt {attempt + 1}/{max_retries})")
+
+                    # Correct CustomGPT API request format based on official documentation
+                    # Use multipart/form-data with query parameters
+                    form_data = {
+                        "response_source": "default",
+                        "prompt": prompt
+                    }
+
+                    headers = {
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Accept": "application/json"
+                        # Don't set Content-Type - let requests handle multipart boundary
+                    }
+
                     response = requests.post(
                         url,
-                        json={"prompt": prompt},
-                        headers={"Authorization": f"Bearer {self.api_key}"},
+                        data=form_data,  # Use data for form-encoded data
+                        headers=headers,
                         timeout=60.0  # 60 second timeout per request
                     )
                     api_time = time.time() - start_time
@@ -150,16 +191,28 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
             "model": self.model_name,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            "top_p": self.top_p,
-            "frequency_penalty": self.frequency_penalty,
-            "presence_penalty": self.presence_penalty,
-            "stop": self.stop,
-            "project_id": self.project_id,
-            "session_id": str(self.session_id),
-            "prompt": prompt,
             "messages": message_list,
-            "provider_type": "customgpt_rag"
+            "system_message": None,  # CustomGPT doesn't use system messages
+            "additional_params": {
+                "top_p": self.top_p,
+                "frequency_penalty": self.frequency_penalty,
+                "presence_penalty": self.presence_penalty,
+                "stop": self.stop,
+                "project_id": self.project_id,
+                "session_id": self._current_session_id,
+                "prompt": prompt,
+                "stream": "false",  # Query parameter format
+                "external_id": self._get_external_id(),
+                "lang": "en",
+                "response_source": "default",
+                "provider_type": "customgpt_rag",
+                "request_method": "multipart/form-data"
+            }
         }
+
+    def _get_external_id(self) -> str:
+        """Get the current external_id for logging"""
+        return self._current_external_id
 
     def _get_metadata(self) -> Dict[str, Any]:
         """Get additional metadata for logging"""
@@ -167,8 +220,10 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
             "provider_type": "customgpt_rag",
             "uses_rag": True,
             "project_id": self.project_id,
-            "session_id": str(self.session_id),
-            "api_endpoint": "customgpt.ai/api/v1/conversations/messages"
+            "session_id": self._current_session_id,
+            "api_endpoint": "customgpt.ai/api/v1/conversations/messages",
+            "actual_url": self._current_url,
+            "external_id": self._current_external_id
         }
 
     @classmethod

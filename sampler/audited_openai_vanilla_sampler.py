@@ -4,6 +4,7 @@ Audited OpenAI Vanilla Sampler with comprehensive logging
 
 import os
 import time
+import threading
 from typing import Any, Dict
 
 from openai import OpenAI
@@ -11,6 +12,9 @@ import openai
 
 from custom_types import MessageList
 from sampler.audited_sampler_base import AuditedSamplerBase
+
+# Global rate limiter for OpenAI API for fair comparison with other providers
+_openai_vanilla_semaphore = threading.Semaphore(5)  # Max 5 concurrent requests
 
 
 class AuditedOpenAIVanillaSampler(AuditedSamplerBase):
@@ -42,44 +46,46 @@ class AuditedOpenAIVanillaSampler(AuditedSamplerBase):
         """
         Make the actual OpenAI API request
         """
-        # Prepare messages for the API
-        messages = []
+        # Use global semaphore for fair comparison with other providers
+        with _openai_vanilla_semaphore:
+            # Prepare messages for the API
+            messages = []
 
-        # Add system message if provided
-        if self.system_message:
-            messages.append(self._pack_message("system", self.system_message))
+            # Add system message if provided
+            if self.system_message:
+                messages.append(self._pack_message("system", self.system_message))
 
-        # Add conversation history
-        messages.extend(message_list)
+            # Add conversation history
+            messages.extend(message_list)
 
-        trial = 0
-        while True:
-            try:
-                # Standard chat completion - no RAG
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                )
+            trial = 0
+            while True:
+                try:
+                    # Standard chat completion - no RAG
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens,
+                    )
 
-                return response.choices[0].message.content or ""
+                    return response.choices[0].message.content or ""
 
-            except openai.BadRequestError as e:
-                print(f"Bad Request Error: {e}")
-                return ""
-
-            except Exception as e:
-                exception_backoff = 2**trial
-                print(
-                    f"Vanilla OpenAI exception, retrying {trial} after {exception_backoff} sec: {e}"
-                )
-                time.sleep(exception_backoff)
-                trial += 1
-
-                if trial > 5:  # Max retries
-                    print(f"Max retries exceeded, returning empty response")
+                except openai.BadRequestError as e:
+                    print(f"Bad Request Error: {e}")
                     return ""
+
+                except Exception as e:
+                    exception_backoff = 2**trial
+                    print(
+                        f"Vanilla OpenAI exception, retrying {trial} after {exception_backoff} sec: {e}"
+                    )
+                    time.sleep(exception_backoff)
+                    trial += 1
+
+                    if trial > 5:  # Max retries
+                        print(f"Max retries exceeded, returning empty response")
+                        return ""
 
     def _get_request_data(self, message_list: MessageList) -> Dict[str, Any]:
         """Get request data for audit logging"""

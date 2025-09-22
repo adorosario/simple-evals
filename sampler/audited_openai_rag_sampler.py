@@ -4,6 +4,7 @@ Audited OpenAI RAG Sampler with comprehensive logging
 
 import os
 import time
+import threading
 from typing import Any, Dict
 
 from openai import OpenAI
@@ -11,6 +12,9 @@ import openai
 
 from custom_types import MessageList
 from sampler.audited_sampler_base import AuditedSamplerBase
+
+# Global rate limiter for OpenAI RAG API for fair comparison with other providers
+_openai_rag_semaphore = threading.Semaphore(5)  # Max 5 concurrent requests
 
 
 class AuditedOpenAIRAGSampler(AuditedSamplerBase):
@@ -50,62 +54,64 @@ class AuditedOpenAIRAGSampler(AuditedSamplerBase):
         """
         Make the actual OpenAI RAG API request using Responses API
         """
-        # Extract the user query - usually the last user message
-        user_query = None
-        for message in reversed(message_list):
-            if message.get("role") == "user":
-                user_query = message.get("content", "")
-                break
+        # Use global semaphore for fair comparison with other providers
+        with _openai_rag_semaphore:
+            # Extract the user query - usually the last user message
+            user_query = None
+            for message in reversed(message_list):
+                if message.get("role") == "user":
+                    user_query = message.get("content", "")
+                    break
 
-        if not user_query:
-            raise ValueError("No user message found in message list")
+            if not user_query:
+                raise ValueError("No user message found in message list")
 
-        trial = 0
-        while True:
-            try:
-                # Use the modern Responses API with file search
-                response = self.client.responses.create(
-                    input=user_query,
-                    model=self.model,
-                    tools=[{
-                        "type": "file_search",
-                        "vector_store_ids": [self.vector_store_id],
-                    }],
-                    temperature=self.temperature,
-                    max_output_tokens=self.max_tokens
-                )
+            trial = 0
+            while True:
+                try:
+                    # Use the modern Responses API with file search
+                    response = self.client.responses.create(
+                        input=user_query,
+                        model=self.model,
+                        tools=[{
+                            "type": "file_search",
+                            "vector_store_ids": [self.vector_store_id],
+                        }],
+                        temperature=self.temperature,
+                        max_output_tokens=self.max_tokens
+                    )
 
-                # Extract the response content
-                if response.output:
-                    # Find the message output in the response
-                    for output_item in response.output:
-                        if hasattr(output_item, 'type') and output_item.type == 'message':
-                            if hasattr(output_item, 'content'):
-                                response_text = ""
-                                for content_block in output_item.content:
-                                    if hasattr(content_block, 'text'):
-                                        response_text += content_block.text
-                                return response_text.strip()
+                    # Extract the response content
+                    if response.output:
+                        # Find the message output in the response
+                        for output_item in response.output:
+                            if hasattr(output_item, 'type') and output_item.type == 'message':
+                                if hasattr(output_item, 'content'):
+                                    response_text = ""
+                                    for content_block in output_item.content:
+                                        if hasattr(content_block, 'text'):
+                                            response_text += content_block.text
+                                    return response_text.strip()
 
-                # Fallback - try to get any text from the response
-                if hasattr(response, 'text'):
-                    return response.text.strip()
+                    # Fallback - try to get any text from the response
+                    if hasattr(response, 'text'):
+                        return response.text.strip()
 
-                return ""
-
-            except openai.BadRequestError as e:
-                print(f"Bad Request Error: {e}")
-                return ""
-
-            except Exception as e:
-                exception_backoff = min(2**trial, 4)  # Cap at 4 seconds
-                print(f"RAG exception, retrying {trial} after {exception_backoff} sec: {e}")
-                time.sleep(exception_backoff)
-                trial += 1
-
-                if trial > 2:  # Only 2 retries
-                    print(f"Max retries exceeded, returning empty response")
                     return ""
+
+                except openai.BadRequestError as e:
+                    print(f"Bad Request Error: {e}")
+                    return ""
+
+                except Exception as e:
+                    exception_backoff = min(2**trial, 4)  # Cap at 4 seconds
+                    print(f"RAG exception, retrying {trial} after {exception_backoff} sec: {e}")
+                    time.sleep(exception_backoff)
+                    trial += 1
+
+                    if trial > 2:  # Only 2 retries
+                        print(f"Max retries exceeded, returning empty response")
+                        return ""
 
     def _get_request_data(self, message_list: MessageList) -> Dict[str, Any]:
         """Get request data for audit logging"""

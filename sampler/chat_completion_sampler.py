@@ -60,12 +60,20 @@ class ChatCompletionSampler(SamplerBase):
         trial = 0
         while True:
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=message_list,
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                )
+                # Use max_completion_tokens and default temperature for GPT-5 models
+                if self.model.startswith('gpt-5'):
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=message_list,
+                        max_completion_tokens=self.max_tokens,
+                    )
+                else:
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=message_list,
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens,
+                    )
                 return response.choices[0].message.content
             # NOTE: BadRequestError is triggered once for MMMU, please uncomment if you are reruning MMMU
             except openai.BadRequestError as e:

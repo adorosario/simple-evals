@@ -36,15 +36,18 @@ class AuditedSamplerBase(SamplerBase, ABC):
                 question = message.get("content", "")
                 break
 
-        # Prepare request data for logging
-        request_data = self._get_request_data(message_list)
-
         try:
-            # Call the actual implementation
-            response = self._make_request(message_list)
+            # Call the actual implementation, passing question_id if the method supports it
+            if hasattr(self, '_make_request') and 'question_id' in self._make_request.__code__.co_varnames:
+                response = self._make_request(message_list, question_id=question_id)
+            else:
+                response = self._make_request(message_list)
 
             # Calculate latency
             latency_ms = (time.time() - start_time) * 1000
+
+            # Prepare request data for logging (after request is made to capture actual parameters)
+            request_data = self._get_request_data(message_list)
 
             # Log the successful request
             if self.audit_logger and question_id:
@@ -63,6 +66,12 @@ class AuditedSamplerBase(SamplerBase, ABC):
         except Exception as e:
             # Calculate latency even for failed requests
             latency_ms = (time.time() - start_time) * 1000
+
+            # Prepare request data for logging (best effort, may have incomplete data)
+            try:
+                request_data = self._get_request_data(message_list)
+            except:
+                request_data = {"error": "Failed to prepare request data"}
 
             # Log the failed request
             if self.audit_logger and question_id:

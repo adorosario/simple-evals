@@ -19,6 +19,10 @@ services:
     tty: true
 
   simple-evals:
+    build:
+      context: .
+      tags:
+        - simple-evals:latest
     image: simple-evals:latest
     container_name: simple-evals-benchmark
     volumes:
