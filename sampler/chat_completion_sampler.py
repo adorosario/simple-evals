@@ -27,6 +27,7 @@ class ChatCompletionSampler(SamplerBase):
         system_message: str | None = None,
         temperature: float = 0.5,
         max_tokens: int = 1024,
+        service_tier: str | None = None,
     ):
         self.api_key_name = "OPENAI_API_KEY"
         self.client = OpenAI()
@@ -35,6 +36,7 @@ class ChatCompletionSampler(SamplerBase):
         self.system_message = system_message
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.service_tier = service_tier
         self.image_format = "url"
 
     def _handle_image(
@@ -60,20 +62,24 @@ class ChatCompletionSampler(SamplerBase):
         trial = 0
         while True:
             try:
+                # Prepare API parameters
+                api_params = {
+                    "model": self.model,
+                    "messages": message_list,
+                }
+
                 # Use max_completion_tokens and default temperature for GPT-5 models
                 if self.model.startswith('gpt-5'):
-                    response = self.client.chat.completions.create(
-                        model=self.model,
-                        messages=message_list,
-                        max_completion_tokens=self.max_tokens,
-                    )
+                    api_params["max_completion_tokens"] = self.max_tokens
                 else:
-                    response = self.client.chat.completions.create(
-                        model=self.model,
-                        messages=message_list,
-                        temperature=self.temperature,
-                        max_tokens=self.max_tokens,
-                    )
+                    api_params["temperature"] = self.temperature
+                    api_params["max_tokens"] = self.max_tokens
+
+                # Add service_tier if specified and model supports it (only GPT-5 supports flex)
+                if self.service_tier and self.model.startswith('gpt-5'):
+                    api_params["service_tier"] = self.service_tier
+
+                response = self.client.chat.completions.create(**api_params)
                 return response.choices[0].message.content
             # NOTE: BadRequestError is triggered once for MMMU, please uncomment if you are reruning MMMU
             except openai.BadRequestError as e:

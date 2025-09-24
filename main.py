@@ -7,12 +7,12 @@ import pandas as pd
 import asyncio
 import common
 import hashlib
-from drop_eval import DropEval
-from gpqa_eval import GPQAEval
+# from drop_eval import DropEval
+# from gpqa_eval import GPQAEval
 # from humaneval_eval import HumanEval
-from math_eval import MathEval
-from mgsm_eval import MGSMEval
-from mmlu_eval import MMLUEval
+# from math_eval import MathEval
+# from mgsm_eval import MGSMEval
+# from mmlu_eval import MMLUEval
 from simpleqa_eval import SimpleQAEval
 from sampler.chat_completion_sampler import (
     OPENAI_SYSTEM_MESSAGE_API,
@@ -90,12 +90,7 @@ AVAILABLE_MODELS = {
 
 # Evaluation definitions
 AVAILABLE_EVALUATIONS = [
-    "simpleqa",
-    "mmlu",
-    "math",
-    "gpqa",
-    "mgsm",
-    "drop"
+    "simpleqa"
 ]
 
 class EvaluationRequest(BaseModel):
@@ -117,27 +112,6 @@ def get_evals(eval_name, debug_mode, num_examples=None):
     equality_checker = ChatCompletionSampler(model="gpt-4-turbo-preview")
     
     match eval_name:
-        case "mmlu":
-            return MMLUEval(num_examples=1 if debug_mode else num_examples)
-        case "math":
-            return MathEval(
-                equality_checker=equality_checker,
-                num_examples=num_examples,
-                n_repeats=1 if debug_mode else 10,
-            )
-        case "gpqa":
-            return GPQAEval(
-                n_repeats=1 if debug_mode else 10, num_examples=num_examples
-            )
-        case "mgsm":
-            return MGSMEval(num_examples_per_lang=10 if debug_mode else num_examples)
-        case "drop":
-            return DropEval(
-                num_examples=10 if debug_mode else num_examples,
-                train_samples_per_prompt=3,
-            )
-        case "humaneval":
-            return HumanEval(num_examples=10 if debug_mode else num_examples)
         case "simpleqa":
             return SimpleQAEval(
                 grader_model=grading_sampler,

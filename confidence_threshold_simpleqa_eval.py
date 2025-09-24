@@ -37,11 +37,10 @@ class ConfidenceThreshold:
         return f"Answer only if >{self.threshold*100:.0f}% confident (penalty ratio: {self.penalty_ratio})"
 
 
-# Predefined confidence threshold configurations based on OpenAI paper recommendations
+# Single confidence threshold configuration based on OpenAI paper recommendations
+# Using 80% confidence threshold as recommended in arXiv:2509.04664v1
 CONFIDENCE_THRESHOLDS = [
-    ConfidenceThreshold(0.5, 1.0, "Balanced"),      # t=0.5, penalty=1
-    ConfidenceThreshold(0.75, 3.0, "Conservative"), # t=0.75, penalty=3
-    ConfidenceThreshold(0.9, 9.0, "Cautious"),      # t=0.9, penalty=9
+    ConfidenceThreshold(0.8, 4.0, "Conservative"),  # t=0.8, penalty=4 (balanced penalty for 80% threshold)
 ]
 
 
@@ -176,13 +175,16 @@ def apply_bonferroni_correction(p_values: List[float], alpha: float = 0.05) -> T
 
 
 CONFIDENCE_THRESHOLD_GRADER_TEMPLATE = """
-Your job is to look at a question, a gold target, and a predicted answer, and then assign a grade of either ["CORRECT", "INCORRECT", "NOT_ATTEMPTED"].
+Your job is to look at a question, a gold target, and a predicted answer, and assign a grade of either CORRECT or INCORRECT.
 
 This evaluation is being conducted under the {threshold_name} confidence threshold framework (threshold: {threshold_value:.0%}, penalty ratio: {penalty_ratio}).
 
-I will first give examples of each grade, then you will grade a new example. Your response MUST include:
+IMPORTANT: You can only assign grades of CORRECT (A) or INCORRECT (B). There is no "NOT_ATTEMPTED" grade - provider abstentions are handled separately.
+
+Your response MUST include:
 1. A detailed reasoning section explaining your analysis
-2. A final grade (A, B, or C)
+2. A final grade (A for CORRECT, B for INCORRECT)
+3. A consistency check to verify your reasoning matches your final grade
 
 The following are examples of CORRECT predicted answers.
 ```
@@ -267,6 +269,9 @@ Based on my analysis above, I grade this predicted answer as:
 A: CORRECT
 B: INCORRECT
 
+CONSISTENCY CHECK:
+Before finalizing, verify that your reasoning above supports your chosen grade. If your reasoning suggests the answer is correct, you should choose A. If your reasoning suggests the answer is incorrect, you should choose B.
+
 Just return the letters "A" or "B", with no additional text after the grade.
 """.strip()
 
@@ -274,6 +279,160 @@ Just return the letters "A" or "B", with no additional text after the grade.
 CHOICE_LETTERS = ["A", "B"]
 CHOICE_STRINGS = ["CORRECT", "INCORRECT"]
 CHOICE_LETTER_TO_STRING = dict(zip(CHOICE_LETTERS, CHOICE_STRINGS))
+
+
+def detect_abstention(response: str) -> bool:
+    """
+    Detect if a provider response is an abstention (should get 0 points, not -4 penalty).
+    Returns True if the response is clearly an abstention.
+    """
+    if not response or response.strip() == "":
+        return True
+
+    response_lower = response.lower().strip()
+
+    # Direct abstention phrases
+    direct_abstention_phrases = [
+        "i don't know",
+        "i do not know",
+        "i'm not sure",
+        "i am not sure",
+        "not sure",
+        "cannot answer",
+        "can't answer",
+        "unable to answer",
+        "don't have enough information",
+        "do not have enough information",
+        "insufficient information",
+        "need more information",
+        "would need to research",
+        "would have to research",
+        "would need to check",
+        "would have to check",
+        "reach out to support",
+        "contact support",
+        "please check",
+        "please verify"
+    ]
+
+    # Knowledge base limitation phrases (common in RAG systems)
+    knowledge_limitation_phrases = [
+        "my knowledge base does not",
+        "knowledge base does not specify",
+        "knowledge base doesn't contain",
+        "knowledge base doesn't have",
+        "not in my knowledge base",
+        "my training data doesn't",
+        "training data does not",
+        "don't have access to",
+        "do not have access to",
+        "without access to",
+        "cannot access",
+        "can't access"
+    ]
+
+    # Check for direct abstention phrases
+    for phrase in direct_abstention_phrases:
+        if phrase in response_lower:
+            return True
+
+    # Check for knowledge limitation phrases
+    for phrase in knowledge_limitation_phrases:
+        if phrase in response_lower:
+            return True
+
+    # Check for very short non-informative responses
+    if len(response_lower) < 20 and any(word in response_lower for word in ["unknown", "unclear", "unsure", "uncertain"]):
+        return True
+
+    return False
+
+
+def validate_judge_consistency(reasoning: str, final_grade: str, full_response: str) -> dict:
+    """
+    Validate consistency between judge reasoning and final grade.
+    Returns validation metadata and suggested corrections.
+    """
+    validation_result = {
+        "reasoning_grade_consistent": True,
+        "confidence_signals_detected": [],
+        "validation_passed": True,
+        "inconsistency_type": None,
+        "suggested_grade": final_grade,
+        "reasoning_indicators": []
+    }
+
+    # Convert grade to reasoning-friendly format
+    grade_meaning = "CORRECT" if final_grade == "A" else "INCORRECT"
+
+    # Extract confidence signals from reasoning
+    reasoning_lower = reasoning.lower()
+
+    # Detect explicit abstention signals
+    abstention_signals = [
+        "does not specify", "don't know", "cannot answer", "not sure",
+        "abstain", "decline", "not attempted", "knowledge base does not",
+        "would have to", "need more", "unclear"
+    ]
+
+    for signal in abstention_signals:
+        if signal in reasoning_lower:
+            validation_result["confidence_signals_detected"].append(f"abstention: {signal}")
+
+    # Detect certainty signals
+    certainty_signals = [
+        "exactly", "explicitly states", "clearly", "directly", "factually correct",
+        "matches exactly", "definite", "precise", "accurate"
+    ]
+
+    for signal in certainty_signals:
+        if signal in reasoning_lower:
+            validation_result["confidence_signals_detected"].append(f"certainty: {signal}")
+
+    # Check for reasoning-grade inconsistencies
+    reasoning_suggests_correct = any([
+        "should be graded correct" in reasoning_lower,
+        "therefore it should be graded as correct" in reasoning_lower,
+        "final grade: a" in reasoning_lower,
+        "grade this predicted answer as: a" in reasoning_lower,
+        "the predicted answer is correct" in reasoning_lower
+    ])
+
+    reasoning_suggests_incorrect = any([
+        "should be graded incorrect" in reasoning_lower,
+        "therefore it should be graded as incorrect" in reasoning_lower,
+        "final grade: b" in reasoning_lower,
+        "grade this predicted answer as: b" in reasoning_lower,
+        "the predicted answer is incorrect" in reasoning_lower,
+        "contradicts the gold target" in reasoning_lower
+    ])
+
+    # Track reasoning indicators
+    if reasoning_suggests_correct:
+        validation_result["reasoning_indicators"].append("suggests_correct")
+    if reasoning_suggests_incorrect:
+        validation_result["reasoning_indicators"].append("suggests_incorrect")
+
+    # Detect inconsistencies
+    if reasoning_suggests_correct and final_grade == "B":
+        validation_result["reasoning_grade_consistent"] = False
+        validation_result["inconsistency_type"] = "reasoning_says_correct_grade_says_incorrect"
+        validation_result["suggested_grade"] = "A"
+        validation_result["validation_passed"] = False
+
+    elif reasoning_suggests_incorrect and final_grade == "A":
+        validation_result["reasoning_grade_consistent"] = False
+        validation_result["inconsistency_type"] = "reasoning_says_incorrect_grade_says_correct"
+        validation_result["suggested_grade"] = "B"
+        validation_result["validation_passed"] = False
+
+    # Check for abstention misclassification
+    if validation_result["confidence_signals_detected"] and any("abstention" in signal for signal in validation_result["confidence_signals_detected"]):
+        # If strong abstention signals but graded as incorrect, may need review
+        if final_grade == "B" and not reasoning_suggests_incorrect:
+            validation_result["reasoning_indicators"].append("possible_abstention_misclassified_as_incorrect")
+
+    return validation_result
 
 
 class ConfidenceThresholdSimpleQAEval(Eval):
@@ -288,14 +447,22 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         num_examples: int | None = None,
         n_repeats: int = 1,
         audit_logger=None,
-        confidence_thresholds: List[ConfidenceThreshold] = None
+        confidence_thresholds: List[ConfidenceThreshold] = None,
+        use_flex_tier: bool = False
     ):
-        # Use GPT-5-mini as default grader
+        # Use GPT-5 as default grader for improved reliability
         if grader_model is None:
-            grader_model = ChatCompletionSampler(
-                model="gpt-5-mini",
-                temperature=0.0
-            )
+            if use_flex_tier:
+                grader_model = ChatCompletionSampler(
+                    model="gpt-5",
+                    temperature=0.0,
+                    service_tier="flex"
+                )
+            else:
+                grader_model = ChatCompletionSampler(
+                    model="gpt-5",
+                    temperature=0.0
+                )
 
         with requests.get("https://openaipublic.blob.core.windows.net/simple-evals/simple_qa_test_set.csv") as response:
             blob_file = io.BytesIO(response.content)
@@ -362,8 +529,10 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         ]
 
         try:
+            print(f"   🔧 Calling judge for question {question_id}...")
             grading_response = self.grader_model(prompt_messages)
             latency_ms = (time.time() - start_time) * 1000
+            print(f"   ✅ Judge responded in {latency_ms:.0f}ms")
 
             # Extract reasoning and grade
             reasoning = ""
@@ -375,20 +544,44 @@ class ConfidenceThresholdSimpleQAEval(Eval):
                 reasoning = reasoning_match.group(1).strip()
 
             # Extract the final grade
-            grade_match = re.search(r"FINAL GRADE:.*?([ABC])", grading_response, re.DOTALL)
+            grade_match = re.search(r"FINAL GRADE:.*?([AB])", grading_response, re.DOTALL)
             if grade_match:
                 grade_letter = grade_match.group(1)
             else:
-                # Fallback: look for any A, B, or C
+                # Fallback: look for any A or B
                 fallback_match = re.search(r"(A|B)", grading_response)
                 if fallback_match:
                     grade_letter = fallback_match.group(0)
 
-            # Calculate threshold-aware scores (judge can only give A or B)
+            # Store original grade before any corrections
+            original_grade = grade_letter
+
+            # Validate judge consistency
+            try:
+                validation_result = validate_judge_consistency(reasoning, grade_letter, grading_response)
+            except Exception as e:
+                print(f"   ⚠️ Validation error: {e}")
+                validation_result = {
+                    "reasoning_grade_consistent": True,
+                    "confidence_signals_detected": [],
+                    "validation_passed": True,
+                    "inconsistency_type": None,
+                    "suggested_grade": grade_letter,
+                    "reasoning_indicators": [],
+                    "validation_error": str(e)
+                }
+
+            # Apply correction if validation failed and we have a suggested grade
+            if not validation_result["validation_passed"] and validation_result["suggested_grade"]:
+                print(f"   ⚠️ Judge inconsistency detected: {validation_result['inconsistency_type']}")
+                print(f"   🔄 Correcting grade from {original_grade} to {validation_result['suggested_grade']}")
+                grade_letter = validation_result["suggested_grade"]
+
+            # Calculate threshold-aware scores (judge can give A, B, or sometimes NOT_ATTEMPTED)
             is_correct = grade_letter == "A"
             is_incorrect = grade_letter == "B"
-            # Provider abstention is handled separately, not from judge evaluation
-            is_not_attempted = False  # Judge never says "not attempted"
+            # Check if judge determined it was not attempted (grade not A or B)
+            is_not_attempted = grade_letter not in ["A", "B"]
 
             # Volume strategy score (traditional binary)
             volume_score = 1.0 if is_correct else 0.0
@@ -426,7 +619,13 @@ class ConfidenceThresholdSimpleQAEval(Eval):
                 "is_incorrect": is_incorrect,
                 "is_not_attempted": is_not_attempted,
                 "volume_score": volume_score,
-                "quality_score": quality_score
+                "quality_score": quality_score,
+                "judge_validation": {
+                    **validation_result,
+                    "original_grade": original_grade,
+                    "final_grade": grade_letter,
+                    "grade_corrected": original_grade != grade_letter
+                }
             }
 
         except Exception as e:
@@ -560,10 +759,11 @@ class ConfidenceThresholdSimpleQAEval(Eval):
     def _evaluate_single_response(self, response_data: Dict[str, any], threshold: ConfidenceThreshold) -> SingleEvalResult:
         """Evaluate a single response against a threshold"""
 
-        # Check if provider abstained (empty/invalid response)
         provider_response = response_data["response"]
+
+        # First check if provider abstained (empty response or explicit abstention)
         if not provider_response or provider_response.strip() == "":
-            # Provider abstained - don't send to judge
+            # Empty response - clear abstention
             grading_result = {
                 "grade_letter": "C",
                 "grade_string": "NOT_ATTEMPTED",
@@ -574,7 +774,26 @@ class ConfidenceThresholdSimpleQAEval(Eval):
                 "is_incorrect": False,
                 "is_not_attempted": True,
                 "volume_score": 0.0,
-                "quality_score": 0.0
+                "quality_score": 0.0,
+                "abstention_detected": True,
+                "abstention_type": "empty_response"
+            }
+        elif detect_abstention(provider_response):
+            # Explicit abstention detected - give 0 points, don't send to judge
+            print(f"   🛡️ Abstention detected: '{provider_response[:60]}...'")
+            grading_result = {
+                "grade_letter": "C",
+                "grade_string": "NOT_ATTEMPTED",
+                "reasoning": "Provider explicitly abstained from answering",
+                "full_response": provider_response,
+                "latency_ms": 0,
+                "is_correct": False,
+                "is_incorrect": False,
+                "is_not_attempted": True,
+                "volume_score": 0.0,
+                "quality_score": 0.0,
+                "abstention_detected": True,
+                "abstention_type": "explicit_abstention"
             }
         else:
             # Grade the response with confidence threshold context
@@ -586,6 +805,10 @@ class ConfidenceThresholdSimpleQAEval(Eval):
                 provider_name=response_data["provider_name"],
                 threshold=threshold
             )
+
+            # Add abstention metadata for non-abstentions
+            grading_result["abstention_detected"] = False
+            grading_result["abstention_type"] = None
 
         # Create HTML for each sample result
         html = common.jinja_env.from_string(common.HTML_JINJA).render(
@@ -662,14 +885,14 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         print(f"   ✅ Completed {len(results)} judge evaluations")
         return results
 
-    def __call__(self, sampler: SamplerBase, provider_name: str = None) -> Dict[str, EvalResult]:
+    def __call__(self, sampler: SamplerBase, provider_name: str = None) -> EvalResult:
         """
-        Run multi-threshold evaluation and return results for each threshold
+        Run evaluation against the single 80% confidence threshold
         """
         if provider_name is None:
             provider_name = sampler.__class__.__name__.replace("Sampler", "").replace("Audited", "")
 
-        print(f"\n🎯 Running Confidence Threshold Evaluation for {provider_name}")
+        print(f"\n🎯 Running Quality-Based Evaluation for {provider_name}")
         print("=" * 60)
 
         # Update audit logger with total questions
@@ -684,38 +907,34 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         if self.audit_logger:
             self.audit_logger.update_progress(len(provider_responses))
 
-        threshold_results = {}
+        # Use the single threshold (80% confidence)
+        threshold = self.confidence_thresholds[0]
+        print(f"\n📊 Evaluating with {threshold.name} methodology (t={threshold.threshold}, penalty={threshold.penalty_ratio})")
+        print(f"   Evaluation criteria: {threshold.description}")
 
-        # Then evaluate these responses against each threshold
-        for threshold in self.confidence_thresholds:
-            print(f"\n📊 Evaluating against {threshold.name} threshold (t={threshold.threshold}, penalty={threshold.penalty_ratio})")
-            print(f"   Evaluation criteria: {threshold.description}")
+        # Evaluate the natural responses against the threshold
+        results = self.evaluate_single_threshold(provider_responses, threshold)
 
-            # Evaluate the natural responses against this threshold
-            results = self.evaluate_single_threshold(provider_responses, threshold)
+        # Calculate metrics
+        aggregate_metrics = self._calculate_threshold_metrics(results, threshold)
 
-            # Calculate threshold-specific metrics
-            aggregate_metrics = self._calculate_threshold_metrics(results, threshold)
+        # Create EvalResult
+        base_result = common.aggregate_results(results)
+        base_result.metrics.update(aggregate_metrics)
 
-            # Create EvalResult for this threshold
-            base_result = common.aggregate_results(results)
-            base_result.metrics.update(aggregate_metrics)
+        # Print summary
+        print(f"   📈 Results:")
+        print(f"      Volume Score (traditional): {aggregate_metrics['volume_score_mean']:.3f}")
+        print(f"      Quality Score (penalty-aware): {aggregate_metrics['quality_score_mean']:.3f}")
+        print(f"      Attempted Rate: {aggregate_metrics['attempted_rate']:.3f}")
+        print(f"      Success on Attempted: {aggregate_metrics['accuracy_given_attempted']:.3f}")
 
-            threshold_results[threshold.name] = base_result
+        return base_result
 
-            # Print summary for this threshold
-            print(f"   📈 Results:")
-            print(f"      Volume Score (traditional): {aggregate_metrics['volume_score_mean']:.3f}")
-            print(f"      Quality Score (penalty-aware): {aggregate_metrics['quality_score_mean']:.3f}")
-            print(f"      Attempted Rate: {aggregate_metrics['attempted_rate']:.3f}")
-            print(f"      Success on Attempted: {aggregate_metrics['accuracy_given_attempted']:.3f}")
-
-        return threshold_results
-
-    def analyze_statistical_significance(self, provider_results: Dict[str, Dict[str, EvalResult]]) -> Dict[str, any]:
+    def analyze_statistical_significance(self, provider_results: Dict[str, EvalResult]) -> Dict[str, any]:
         """
         Perform cross-provider statistical analysis
-        Returns statistical comparisons between providers across thresholds
+        Returns statistical comparisons between providers
         """
         statistical_analysis = {
             "pairwise_comparisons": {},
@@ -725,75 +944,68 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         }
 
         providers = list(provider_results.keys())
-        thresholds = list(next(iter(provider_results.values())).keys())
 
-        # Pairwise comparisons for each threshold
-        for threshold in thresholds:
-            statistical_analysis["pairwise_comparisons"][threshold] = {}
-            statistical_analysis["effect_sizes"][threshold] = {}
-            statistical_analysis["grade_distribution_tests"][threshold] = {}
+        # Get data for all providers
+        provider_data = {}
+        for provider in providers:
+            result = provider_results[provider]
+            provider_data[provider] = {
+                "volume_scores": result.metrics.get("volume_scores_raw", []),
+                "quality_scores": result.metrics.get("quality_scores_raw", []),
+                "n_correct": result.metrics.get("n_correct", 0),
+                "n_incorrect": result.metrics.get("n_incorrect", 0),
+                "n_not_attempted": result.metrics.get("n_not_attempted", 0)
+            }
 
-            # Get data for this threshold
-            threshold_data = {}
-            for provider in providers:
-                result = provider_results[provider][threshold]
-                threshold_data[provider] = {
-                    "volume_scores": result.metrics.get("volume_scores_raw", []),
-                    "quality_scores": result.metrics.get("quality_scores_raw", []),
-                    "n_correct": result.metrics.get("n_correct", 0),
-                    "n_incorrect": result.metrics.get("n_incorrect", 0),
-                    "n_not_attempted": result.metrics.get("n_not_attempted", 0)
+        # Pairwise comparisons between providers
+        for i, provider1 in enumerate(providers):
+            for provider2 in providers[i+1:]:
+                comparison_key = f"{provider1}_vs_{provider2}"
+
+                # t-tests for continuous metrics
+                volume_comparison = self._compare_continuous_metrics(
+                    provider_data[provider1]["volume_scores"],
+                    provider_data[provider2]["volume_scores"],
+                    "Volume Score"
+                )
+
+                quality_comparison = self._compare_continuous_metrics(
+                    provider_data[provider1]["quality_scores"],
+                    provider_data[provider2]["quality_scores"],
+                    "Quality Score"
+                )
+
+                statistical_analysis["pairwise_comparisons"][comparison_key] = {
+                    "volume_score": volume_comparison,
+                    "quality_score": quality_comparison
                 }
 
-            # Pairwise comparisons between providers
-            for i, provider1 in enumerate(providers):
-                for provider2 in providers[i+1:]:
-                    comparison_key = f"{provider1}_vs_{provider2}"
+                # Effect sizes
+                volume_effect = cohens_d(
+                    provider_data[provider1]["volume_scores"],
+                    provider_data[provider2]["volume_scores"]
+                )
+                quality_effect = cohens_d(
+                    provider_data[provider1]["quality_scores"],
+                    provider_data[provider2]["quality_scores"]
+                )
 
-                    # t-tests for continuous metrics
-                    volume_comparison = self._compare_continuous_metrics(
-                        threshold_data[provider1]["volume_scores"],
-                        threshold_data[provider2]["volume_scores"],
-                        "Volume Score"
-                    )
+                statistical_analysis["effect_sizes"][comparison_key] = {
+                    "volume_score_cohens_d": volume_effect,
+                    "volume_score_interpretation": interpret_effect_size(volume_effect, "cohens_d"),
+                    "quality_score_cohens_d": quality_effect,
+                    "quality_score_interpretation": interpret_effect_size(quality_effect, "cohens_d")
+                }
 
-                    quality_comparison = self._compare_continuous_metrics(
-                        threshold_data[provider1]["quality_scores"],
-                        threshold_data[provider2]["quality_scores"],
-                        "Quality Score"
-                    )
+                # Chi-square test for grade distributions
+                chi2_result = self._compare_grade_distributions(
+                    provider_data[provider1],
+                    provider_data[provider2],
+                    provider1,
+                    provider2
+                )
 
-                    statistical_analysis["pairwise_comparisons"][threshold][comparison_key] = {
-                        "volume_score": volume_comparison,
-                        "quality_score": quality_comparison
-                    }
-
-                    # Effect sizes
-                    volume_effect = cohens_d(
-                        threshold_data[provider1]["volume_scores"],
-                        threshold_data[provider2]["volume_scores"]
-                    )
-                    quality_effect = cohens_d(
-                        threshold_data[provider1]["quality_scores"],
-                        threshold_data[provider2]["quality_scores"]
-                    )
-
-                    statistical_analysis["effect_sizes"][threshold][comparison_key] = {
-                        "volume_score_cohens_d": volume_effect,
-                        "volume_score_interpretation": interpret_effect_size(volume_effect, "cohens_d"),
-                        "quality_score_cohens_d": quality_effect,
-                        "quality_score_interpretation": interpret_effect_size(quality_effect, "cohens_d")
-                    }
-
-                    # Chi-square test for grade distributions
-                    chi2_result = self._compare_grade_distributions(
-                        threshold_data[provider1],
-                        threshold_data[provider2],
-                        provider1,
-                        provider2
-                    )
-
-                    statistical_analysis["grade_distribution_tests"][threshold][comparison_key] = chi2_result
+                statistical_analysis["grade_distribution_tests"][comparison_key] = chi2_result
 
         # Summary statistics across all comparisons
         statistical_analysis["summary"] = self._summarize_statistical_results(statistical_analysis)
@@ -884,25 +1096,24 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         all_p_values = []
         comparison_types = []  # Track what each p-value represents
 
-        for threshold in analysis["pairwise_comparisons"]:
-            for comparison in analysis["pairwise_comparisons"][threshold]:
-                # Volume score p-values
-                vol_p = analysis["pairwise_comparisons"][threshold][comparison]["volume_score"].get("p_value")
-                if vol_p is not None:
-                    all_p_values.append(vol_p)
-                    comparison_types.append(f"{threshold}_{comparison}_volume")
+        for comparison in analysis["pairwise_comparisons"]:
+            # Volume score p-values
+            vol_p = analysis["pairwise_comparisons"][comparison]["volume_score"].get("p_value")
+            if vol_p is not None:
+                all_p_values.append(vol_p)
+                comparison_types.append(f"{comparison}_volume")
 
-                # Quality score p-values
-                qual_p = analysis["pairwise_comparisons"][threshold][comparison]["quality_score"].get("p_value")
-                if qual_p is not None:
-                    all_p_values.append(qual_p)
-                    comparison_types.append(f"{threshold}_{comparison}_quality")
+            # Quality score p-values
+            qual_p = analysis["pairwise_comparisons"][comparison]["quality_score"].get("p_value")
+            if qual_p is not None:
+                all_p_values.append(qual_p)
+                comparison_types.append(f"{comparison}_quality")
 
-                # Distribution test p-values
-                dist_p = analysis["grade_distribution_tests"][threshold][comparison].get("p_value")
-                if dist_p is not None:
-                    all_p_values.append(dist_p)
-                    comparison_types.append(f"{threshold}_{comparison}_distribution")
+            # Distribution test p-values
+            dist_p = analysis["grade_distribution_tests"][comparison].get("p_value")
+            if dist_p is not None:
+                all_p_values.append(dist_p)
+                comparison_types.append(f"{comparison}_distribution")
 
         # Apply Bonferroni correction
         if all_p_values:
@@ -912,7 +1123,7 @@ class ConfidenceThresholdSimpleQAEval(Eval):
             corrected_alpha = 0.05
 
         summary = {
-            "total_comparisons": len(analysis["pairwise_comparisons"].get("Balanced", {})),
+            "total_comparisons": len(analysis["pairwise_comparisons"]),
             "total_statistical_tests": len(all_p_values),
             "bonferroni_corrected_alpha": corrected_alpha,
             "significant_volume_comparisons_raw": 0,
@@ -928,45 +1139,43 @@ class ConfidenceThresholdSimpleQAEval(Eval):
 
         # Count raw and corrected significance
         p_idx = 0
-        for threshold in analysis["pairwise_comparisons"]:
-            for comparison in analysis["pairwise_comparisons"][threshold]:
+        for comparison in analysis["pairwise_comparisons"]:
+            # Volume score results
+            vol_data = analysis["pairwise_comparisons"][comparison]["volume_score"]
+            if vol_data.get("p_value") is not None:
+                if vol_data.get("significant_raw", False):
+                    summary["significant_volume_comparisons_raw"] += 1
+                if p_idx < len(corrected_significant) and corrected_significant[p_idx]:
+                    summary["significant_volume_comparisons_corrected"] += 1
+                p_idx += 1
 
-                # Volume score results
-                vol_data = analysis["pairwise_comparisons"][threshold][comparison]["volume_score"]
-                if vol_data.get("p_value") is not None:
-                    if vol_data.get("significant_raw", False):
-                        summary["significant_volume_comparisons_raw"] += 1
-                    if p_idx < len(corrected_significant) and corrected_significant[p_idx]:
-                        summary["significant_volume_comparisons_corrected"] += 1
-                    p_idx += 1
+            # Quality score results
+            qual_data = analysis["pairwise_comparisons"][comparison]["quality_score"]
+            if qual_data.get("p_value") is not None:
+                if qual_data.get("significant_raw", False):
+                    summary["significant_quality_comparisons_raw"] += 1
+                if p_idx < len(corrected_significant) and corrected_significant[p_idx]:
+                    summary["significant_quality_comparisons_corrected"] += 1
+                p_idx += 1
 
-                # Quality score results
-                qual_data = analysis["pairwise_comparisons"][threshold][comparison]["quality_score"]
-                if qual_data.get("p_value") is not None:
-                    if qual_data.get("significant_raw", False):
-                        summary["significant_quality_comparisons_raw"] += 1
-                    if p_idx < len(corrected_significant) and corrected_significant[p_idx]:
-                        summary["significant_quality_comparisons_corrected"] += 1
-                    p_idx += 1
+            # Distribution test results
+            dist_data = analysis["grade_distribution_tests"][comparison]
+            if dist_data.get("p_value") is not None:
+                if dist_data.get("significant_raw", False):
+                    summary["significant_distribution_comparisons_raw"] += 1
+                if p_idx < len(corrected_significant) and corrected_significant[p_idx]:
+                    summary["significant_distribution_comparisons_corrected"] += 1
+                p_idx += 1
 
-                # Distribution test results
-                dist_data = analysis["grade_distribution_tests"][threshold][comparison]
-                if dist_data.get("p_value") is not None:
-                    if dist_data.get("significant_raw", False):
-                        summary["significant_distribution_comparisons_raw"] += 1
-                    if p_idx < len(corrected_significant) and corrected_significant[p_idx]:
-                        summary["significant_distribution_comparisons_corrected"] += 1
-                    p_idx += 1
-
-                # Count effect sizes
-                effect_data = analysis["effect_sizes"][threshold][comparison]
-                for interpretation in [effect_data["volume_score_interpretation"], effect_data["quality_score_interpretation"]]:
-                    if interpretation == "large":
-                        summary["large_effect_sizes"] += 1
-                    elif interpretation == "medium":
-                        summary["medium_effect_sizes"] += 1
-                    elif interpretation == "small":
-                        summary["small_effect_sizes"] += 1
+            # Count effect sizes
+            effect_data = analysis["effect_sizes"][comparison]
+            for interpretation in [effect_data["volume_score_interpretation"], effect_data["quality_score_interpretation"]]:
+                if interpretation == "large":
+                    summary["large_effect_sizes"] += 1
+                elif interpretation == "medium":
+                    summary["medium_effect_sizes"] += 1
+                elif interpretation == "small":
+                    summary["small_effect_sizes"] += 1
 
         return summary
 

@@ -1,48 +1,48 @@
-# Confidence Threshold Framework
+# Quality Benchmark Framework
 
 ## Overview
 
-This framework implements the theoretical insights from OpenAI's "Why Language Models Hallucinate" paper (2509.04664v1), introducing penalty-aware scoring and behavioral calibration to better evaluate RAG systems.
+This framework implements the penalty-aware scoring methodology from OpenAI's "Why Language Models Hallucinate" paper (arXiv:2509.04664v1), using the recommended 80% confidence threshold to evaluate RAG providers with a focus on quality over volume.
 
 ## Key Problem Addressed
 
-The paper identified that current evaluation systems **penalize uncertainty and reward guessing**, leading to the "I Don't Know" tax where conservative systems are unfairly penalized. Our benchmark analysis confirmed this:
+The paper identified that current evaluation systems **penalize uncertainty and reward guessing**, leading to the "I Don't Know" tax where conservative systems are unfairly penalized. Our quality benchmark addresses this by:
 
-- **Conservative providers**: Higher abstention rates, lower volume scores, potentially higher quality scores
-- **Aggressive providers**: Lower abstention rates, higher volume scores, potential quality penalties
-- **Traditional scoring**: Only rewards correct answers, ignores the cost of wrong answers
+- **Quality Strategy**: Rewards appropriate uncertainty and calibration
+- **Penalty-Aware Scoring**: Penalizes overconfident incorrect responses
+- **Conservative Threshold**: Uses 80% confidence as recommended in the paper
 
-## Confidence Threshold Framework
+## Quality Evaluation Framework
 
 ### Core Concept
 
-The framework evaluates provider responses using **post-hoc confidence threshold analysis** rather than instructing providers how they will be judged. Providers give natural responses to questions, which are then evaluated against different confidence threshold criteria:
+The framework evaluates provider responses using **post-hoc penalty-aware analysis** with the research-recommended 80% confidence threshold. Providers give natural responses to questions, which are then evaluated against quality-focused criteria:
 
 - **Providers**: Respond naturally to questions without threshold instructions
-- **Evaluation**: Judge assesses responses against threshold-specific criteria post-hoc
-- **Scoring**: Apply different penalty ratios to the same responses based on confidence thresholds
+- **Evaluation**: Judge assesses responses against 80% confidence criteria post-hoc
+- **Scoring**: Apply penalty-aware scoring (Correct=+1, Wrong=-4, IDK=0)
 
-### Threshold Configurations
+### Methodology Configuration
 
-| Strategy | Threshold | Penalty Ratio | Description |
-|----------|-----------|---------------|-------------|
-| **Balanced** | 50% | 1.0 | Traditional binary scoring |
-| **Conservative** | 75% | 3.0 | Higher confidence required |
-| **Cautious** | 90% | 9.0 | Very high confidence required |
+| Parameter | Value | Justification |
+|-----------|-------|---------------|
+| **Confidence Threshold** | 80% | Recommended by OpenAI research |
+| **Penalty Ratio** | 4.0 | Balanced penalty for 80% threshold |
+| **Strategy** | Conservative | Quality-focused approach |
 
-### Scoring Systems
+### Scoring Systems Comparison
 
 1. **Volume Strategy** (Traditional)
    - Correct: +1
    - Wrong: 0
    - IDK: 0
-   - *Rewards guessing*
+   - *Problem: Rewards guessing, penalizes uncertainty*
 
-2. **Quality Strategy** (Penalty-Aware)
+2. **Quality Strategy** (Penalty-Aware) ✅ **Used**
    - Correct: +1
-   - Wrong: -k (penalty ratio)
+   - Wrong: -4
    - IDK: 0
-   - *Rewards appropriate uncertainty*
+   - *Advantage: Rewards appropriate uncertainty, penalizes overconfidence*
 
 ## Usage
 
@@ -62,10 +62,10 @@ docker compose run --rm simple-evals python scripts/confidence_threshold_benchma
 ### Advanced Options
 
 ```bash
-# Custom configuration
+# Custom configuration with increased parallelism
 docker compose run --rm simple-evals python scripts/confidence_threshold_benchmark.py \
   --examples 50 \
-  --max-workers 3 \
+  --max-workers 8 \
   --output-dir custom_results
 ```
 
@@ -73,43 +73,44 @@ docker compose run --rm simple-evals python scripts/confidence_threshold_benchma
 
 ### Core Metrics
 
-- **Volume Score**: Traditional binary accuracy
-- **Quality Score**: Penalty-aware score accounting for overconfidence
-- **Attempted Rate**: Percentage of questions attempted (not abstained)
-- **Accuracy Given Attempted**: Success rate on questions actually answered
-- **Abstention Rate**: Percentage of questions where provider said "I don't know"
-- **Overconfidence Penalty**: Count of wrong answers when should have abstained
+- **🏆 Quality Score**: Penalty-aware score (primary ranking metric)
+- **📊 Volume Score**: Traditional binary accuracy (for comparison)
+- **📈 Attempted Rate**: Percentage of questions attempted (not abstained)
+- **✅ Success Rate**: Success rate on questions actually answered
+- **🚫 Abstention Rate**: Percentage of questions where provider said "I don't know"
+- **⚠️ Overconfidence Penalty**: Count of wrong answers (costly under penalty-aware scoring)
 
-### Behavioral Analysis
+### Provider Analysis
 
-- **Conservative Strategy Assessment**: How appropriately providers handle uncertainty
-- **Behavioral Calibration**: Optimal response selection across thresholds
-- **Cross-Threshold Performance**: Identifying best strategies for each provider
+- **Quality vs Volume Comparison**: Direct comparison of scoring methodologies
+- **Strategy Assessment**: Quality-focused, Volume-focused, or Balanced
+- **Provider Ranking**: Leaderboard sorted by Quality Score
+- **Statistical Significance**: Pairwise provider comparisons with effect sizes
 
 ## Implementation Architecture
 
 ### Components
 
-1. **ConfidenceThresholdSimpleQAEval**: Enhanced evaluation class with post-hoc threshold analysis
-2. **confidence_threshold_benchmark.py**: Main runner script for multi-provider evaluation
-3. **Enhanced Grader Template**: Context-aware judging that assesses natural confidence signals
-4. **Multi-Threshold Evaluator**: Evaluates each provider response against multiple thresholds
+1. **ConfidenceThresholdSimpleQAEval**: Quality evaluation class with 80% confidence threshold
+2. **confidence_threshold_benchmark.py**: Main runner script for provider quality comparison
+3. **Enhanced Grader Template**: Context-aware judging with 80% confidence criteria
+4. **Quality-Focused Evaluator**: Single-threshold evaluation optimized for performance
 
 ### Evaluation Flow
 
 1. **Provider Response Collection**: Each provider called once per question with clean prompts
-2. **Multi-Threshold Assessment**: Natural responses evaluated against each threshold criterion
+2. **Quality Assessment**: Natural responses evaluated against 80% confidence criteria
 3. **Confidence Signal Analysis**: Judge assesses appropriate certainty/uncertainty in responses
-4. **Penalty-Aware Scoring**: Different penalty ratios applied to same responses
+4. **Penalty-Aware Scoring**: Quality strategy applied (Correct=+1, Wrong=-4, IDK=0)
 
-### Key Classes
+### Key Configuration
 
 ```python
 @dataclass
 class ConfidenceThreshold:
-    threshold: float      # 0.5, 0.75, 0.9
-    penalty_ratio: float  # k in penalty formula
-    name: str            # "Conservative", "Balanced", "Aggressive"
+    threshold: float      # 0.8 (80% confidence)
+    penalty_ratio: float  # 4.0 (penalty ratio)
+    name: str            # "Conservative"
 ```
 
 ## Theoretical Foundation
@@ -123,56 +124,56 @@ class ConfidenceThreshold:
 
 ### Our Implementation
 
-- **Post-Hoc Evaluation**: Providers give natural responses, evaluated against thresholds afterward
-- **Multi-Threshold Testing**: Each response assessed across 3 confidence levels
-- **Penalty-Aware Scoring**: Wrong answers penalized proportionally to confidence threshold
+- **Post-Hoc Evaluation**: Providers give natural responses, evaluated against 80% threshold afterward
+- **Single-Threshold Focus**: Streamlined evaluation using research-recommended 80% confidence
+- **Penalty-Aware Scoring**: Wrong answers penalized at 4:1 ratio relative to correct answers
 - **Natural Confidence Signals**: Judge evaluates inherent certainty/uncertainty in responses
-- **Behavioral Calibration**: Measuring appropriate uncertainty recognition without contamination
-- **Cross-Provider Analysis**: Identifying volume vs quality strategy preferences
+- **Provider-Focused Analysis**: Direct comparison of RAG providers using quality methodology
+- **Quality vs Volume Strategy**: Clear demonstration of penalty-aware benefits
 
 ## Expected Insights
 
-### Conservative vs Aggressive Strategies
+### Quality vs Volume Strategy Comparison
 
-- **Conservative Providers**: Higher abstention rates, lower volume scores, higher quality scores
-- **Aggressive Providers**: Lower abstention rates, higher volume scores, potential quality penalties
-- **Optimal Calibration**: Providers that adapt appropriately to confidence thresholds
+- **Quality-Focused Providers**: Higher quality scores, appropriate abstention behavior
+- **Volume-Focused Providers**: Higher volume scores, potential overconfidence penalties
+- **Balanced Providers**: Similar quality and volume scores with optimal calibration
 
 ### Use Case Guidance
 
-- **High-Stakes Applications**: Favor quality strategy with conservative thresholds
-- **Volume Applications**: Traditional volume strategy may be appropriate
-- **Balanced Applications**: 75% threshold provides good compromise
+- **High-Stakes Applications**: Quality strategy recommended (penalizes wrong answers)
+- **Volume Applications**: Traditional volume strategy may still be appropriate
+- **Quality-Critical Systems**: 80% confidence threshold provides conservative evaluation
 
 ## Integration with Existing Pipeline
 
-The framework is designed to complement the existing benchmark:
+The framework is designed to enhance the existing benchmark with quality-focused evaluation:
 
 - **Audit Logging**: Full compatibility with existing audit trail system
-- **Leaderboard Generation**: Enhanced reports with confidence threshold analysis
+- **Provider-Focused Reports**: Enhanced leaderboard with quality vs volume analysis
 - **JSON Output**: Structured results for further analysis
-- **HTML Reports**: Comprehensive visual analysis
+- **HTML Reports**: Clean, provider-focused visual analysis
 
-## Future Extensions
+## Performance Improvements
 
-1. **Custom Threshold Configurations**: User-defined confidence levels
-2. **Domain-Specific Penalties**: Different penalty ratios for different question types
-3. **Real-World Harm Modeling**: Penalties based on actual application costs
-4. **Provider-Specific Optimization**: Threshold tuning per provider type
+1. **~67% Faster Execution**: Single threshold eliminates redundant evaluations
+2. **Increased Parallelism**: Default max_workers increased from 3 to 8
+3. **Simplified Data Structure**: Streamlined results without threshold dimension
+4. **Cleaner Statistical Analysis**: Direct provider-vs-provider comparisons
 
 ## Files
 
-- `confidence_threshold_simpleqa_eval.py`: Core evaluation framework
-- `scripts/confidence_threshold_benchmark.py`: Main runner script
-- `CONFIDENCE_THRESHOLD_FRAMEWORK.md`: This documentation
-- Generated reports in `results/run_*/confidence_threshold_report_*.html`
+- `confidence_threshold_simpleqa_eval.py`: Core quality evaluation framework
+- `scripts/confidence_threshold_benchmark.py`: Main quality benchmark runner
+- `CONFIDENCE_THRESHOLD_FRAMEWORK.md`: This documentation (now quality-focused)
+- Generated reports in `results/run_*/quality_benchmark_report_*.html`
 
 ## Research Impact
 
 This implementation provides:
 
-1. **Empirical Validation**: Testing OpenAI's theoretical framework on real RAG systems using proper post-hoc methodology
-2. **Practical Guidelines**: Concrete recommendations for penalty-aware evaluation methodology
-3. **Industry Standard**: Proposed enhancement to existing benchmarking practices that avoids provider contamination
-4. **Academic Contribution**: Bridge between theory and practical implementation with methodological rigor
-5. **Methodological Advancement**: Demonstrates how to evaluate confidence thresholds without contaminating provider responses
+1. **Empirical Validation**: Testing OpenAI's penalty-aware scoring on real RAG systems
+2. **Practical Guidelines**: Concrete implementation of 80% confidence threshold recommendation
+3. **Industry Standard**: Quality-focused evaluation methodology for RAG providers
+4. **Performance Optimization**: Streamlined implementation without multi-threshold overhead
+5. **Provider-Focused Analysis**: Clear comparison of RAG systems using quality strategy

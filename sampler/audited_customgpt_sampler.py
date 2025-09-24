@@ -50,6 +50,7 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
         self._current_session_id = None
         self._current_url = None
         self._current_external_id = None
+        self._last_response_headers = {}
 
     def _pack_message(self, role: str, content: str):
         return {"role": str(role), "content": content}
@@ -124,6 +125,9 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
                     )
                     api_time = time.time() - start_time
                     print(f"CustomGPT API call completed in {api_time:.2f}s, status: {response.status_code}")
+
+                    # Store response headers for audit logging
+                    self._last_response_headers = dict(response.headers)
 
                     if response.status_code == 200:
                         try:
@@ -223,7 +227,8 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
             "session_id": self._current_session_id,
             "api_endpoint": "customgpt.ai/api/v1/conversations/messages",
             "actual_url": self._current_url,
-            "external_id": self._current_external_id
+            "external_id": self._current_external_id,
+            "response_headers": self._last_response_headers
         }
 
     @classmethod
