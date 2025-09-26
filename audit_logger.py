@@ -182,6 +182,55 @@ class AuditLogger:
         with open(consistency_log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
 
+    def log_judge_validation_override(
+        self,
+        question_id: str,
+        question: str,
+        target_answer: str,
+        predicted_answer: str,
+        original_grade: str,
+        validated_grade: str,
+        validation_result: Dict[str, any],
+        judge_reasoning: str,
+        validator_reasoning: str,
+        metadata: Dict[str, any] = None
+    ):
+        """Log judge validation override decisions for complete audit trail"""
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "run_id": self.run_id,
+            "question_id": question_id,
+            "question": question,
+            "target_answer": target_answer,
+            "predicted_answer": predicted_answer,
+            "grading_details": {
+                "original_grade": original_grade,
+                "validated_grade": validated_grade,
+                "grade_changed": original_grade != validated_grade,
+                "judge_reasoning": judge_reasoning
+            },
+            "validation": {
+                "validation_decision": validation_result.get("validation", "UNKNOWN"),
+                "validator_confidence": validation_result.get("confidence", 0.0),
+                "validator_reasoning": validator_reasoning,
+                "validation_method": validation_result.get("validation_method", "structured_gpt5_nano"),
+                "suggested_grade": validation_result.get("suggested_grade"),
+                "full_validator_response": validation_result.get("full_response", "")
+            },
+            "metadata": metadata or {},
+            "audit_flags": {
+                "grade_override_occurred": original_grade != validated_grade,
+                "a_to_b_conversion": original_grade == "A" and validated_grade == "B",
+                "b_to_a_conversion": original_grade == "B" and validated_grade == "A",
+                "validation_confidence_level": "high" if validation_result.get("confidence", 0.0) >= 0.8 else "medium" if validation_result.get("confidence", 0.0) >= 0.6 else "low"
+            }
+        }
+
+        # Write to separate validation override log for easy monitoring
+        validation_log_file = self.run_dir / "judge_validation_overrides.jsonl"
+        with open(validation_log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+
     def log_error(self, component: str, error: str, context: Dict[str, Any] = None):
         """Log errors with context"""
         error_entry = {

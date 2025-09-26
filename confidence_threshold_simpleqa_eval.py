@@ -408,6 +408,104 @@ def detect_abstention(response: str) -> bool:
     return classification["type"] == "abstention"
 
 
+def validate_judge_reasoning_structured(reasoning: str, grade: str, question: str, target: str, predicted: str) -> dict:
+    """
+    Use GPT-5-nano to validate judge reasoning consistency with structured output.
+    Replaces brittle string pattern matching with reliable LLM-based validation.
+    """
+
+    grade_meaning = "CORRECT" if grade == "A" else "INCORRECT" if grade == "B" else "NOT_ATTEMPTED"
+
+    validation_prompt = f"""You are a validation expert analyzing judge consistency. Determine if the judge's reasoning logically supports their assigned grade.
+
+QUESTION: {question}
+TARGET ANSWER: {target}
+PREDICTED ANSWER: {predicted}
+JUDGE GRADE: {grade} ({grade_meaning})
+JUDGE REASONING: {reasoning}
+
+Your task: Analyze if the reasoning logically supports the grade assigned.
+
+Key validation criteria:
+- If reasoning says the answer is correct/accurate/matches, grade should be A
+- If reasoning says the answer is incorrect/wrong/contradicts, grade should be B
+- If reasoning is unclear or contradictory, note the inconsistency
+
+Respond in this exact format:
+VALIDATION: CONSISTENT or INCONSISTENT
+CONFIDENCE: [0.0 to 1.0]
+REASONING: [Brief explanation of your assessment]
+SUGGESTED_GRADE: [A, B, or C - only if INCONSISTENT, otherwise same as original]"""
+
+    try:
+        # Use GPT-5-nano for structured validation (same as abstention classifier)
+        classifier = ChatCompletionSampler(model="gpt-5-nano", temperature=0.0)
+        validation_messages = [
+            classifier._pack_message(content=validation_prompt, role="user")
+        ]
+
+        validation_response = classifier(validation_messages)
+
+        # Parse the structured response
+        validation = "CONSISTENT"  # default
+        confidence = 0.8  # default
+        validator_reasoning = "Default due to parsing error"
+        suggested_grade = grade  # default to original
+
+        # Extract validation decision
+        if "VALIDATION:" in validation_response:
+            val_line = validation_response.split("VALIDATION:")[1].split("\n")[0].strip().upper()
+            if "INCONSISTENT" in val_line:
+                validation = "INCONSISTENT"
+            elif "CONSISTENT" in val_line:
+                validation = "CONSISTENT"
+
+        # Extract confidence
+        if "CONFIDENCE:" in validation_response:
+            conf_line = validation_response.split("CONFIDENCE:")[1].split("\n")[0].strip()
+            try:
+                confidence = float(conf_line)
+                confidence = max(0.0, min(1.0, confidence))  # Clamp to [0,1]
+            except:
+                confidence = 0.8
+
+        # Extract reasoning
+        if "REASONING:" in validation_response:
+            reasoning_section = validation_response.split("REASONING:")[1].split("SUGGESTED_GRADE:")[0].strip()
+            validator_reasoning = reasoning_section
+
+        # Extract suggested grade (only if inconsistent)
+        if validation == "INCONSISTENT" and "SUGGESTED_GRADE:" in validation_response:
+            grade_line = validation_response.split("SUGGESTED_GRADE:")[1].split("\n")[0].strip().upper()
+            if grade_line in ["A", "B", "C"]:
+                suggested_grade = grade_line
+
+        return {
+            "validation": validation,
+            "validation_passed": validation == "CONSISTENT",
+            "confidence": confidence,
+            "reasoning": validator_reasoning,
+            "suggested_grade": suggested_grade,
+            "original_grade": grade,
+            "full_response": validation_response,
+            "validation_method": "structured_gpt5_nano"
+        }
+
+    except Exception as e:
+        # Fallback: accept original grade if validation fails
+        return {
+            "validation": "CONSISTENT",
+            "validation_passed": True,
+            "confidence": 0.5,
+            "reasoning": f"Validation failed, accepting original grade: {str(e)}",
+            "suggested_grade": grade,
+            "original_grade": grade,
+            "full_response": "",
+            "validation_method": "fallback_due_to_error",
+            "validation_error": str(e)
+        }
+
+
 def validate_judge_consistency(reasoning: str, final_grade: str, full_response: str) -> dict:
     """
     Validate consistency between judge reasoning and final grade.
@@ -508,7 +606,8 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         n_repeats: int = 1,
         audit_logger=None,
         confidence_thresholds: List[ConfidenceThreshold] = None,
-        use_flex_tier: bool = False
+        use_flex_tier: bool = False,
+        enable_validation: bool = True
     ):
         # Use GPT-5 as default grader for improved reliability
         if grader_model is None:
@@ -597,6 +696,20 @@ class ConfidenceThresholdSimpleQAEval(Eval):
 
         self.provider_anonymization = ConfidenceThresholdSimpleQAEval._global_provider_anonymization
         self.blind_evaluation_enabled = ConfidenceThresholdSimpleQAEval._global_blind_evaluation_enabled
+
+        # Store validation configuration
+        self.enable_validation = enable_validation
+
+        # Initialize validation statistics for monitoring (audit-only)
+        self.validation_stats = {
+            "total_validations": 0,
+            "audit_flags": 0,  # Cases where audit flagged concerns
+            "audit_consistent": 0,  # Cases where audit found no issues
+            "validation_errors": 0,
+            "high_confidence_flags": 0,  # High confidence audit flags
+            "low_confidence_flags": 0,   # Low confidence audit flags
+            "validation_bypassed": 0
+        }
 
     @classmethod
     def reset_blind_evaluation(cls):
@@ -824,48 +937,117 @@ class ConfidenceThresholdSimpleQAEval(Eval):
             latency_ms = (time.time() - start_time) * 1000
             print(f"   ✅ Judge responded in {latency_ms:.0f}ms")
 
-            # Extract reasoning and grade
+            # Extract reasoning and grade from JSON response
             reasoning = ""
             grade_letter = "C"  # Default to NOT_ATTEMPTED
+            judge_confidence = 0.0
+            consistency_check = ""
 
-            # Look for the reasoning section
-            reasoning_match = re.search(r"ANALYSIS AND REASONING:\s*(.*?)\s*FINAL GRADE:", grading_response, re.DOTALL)
-            if reasoning_match:
-                reasoning = reasoning_match.group(1).strip()
+            try:
+                # Parse JSON response from judge
+                import json
+                judge_data = json.loads(grading_response)
+                reasoning = judge_data.get("reasoning", "")
+                grade_letter = judge_data.get("grade", "C")
+                judge_confidence = judge_data.get("confidence", 0.0)
+                consistency_check = judge_data.get("consistency_check", "")
+            except json.JSONDecodeError:
+                # Fallback to old text parsing if JSON fails
+                reasoning_match = re.search(r"ANALYSIS AND REASONING:\s*(.*?)\s*FINAL GRADE:", grading_response, re.DOTALL)
+                if reasoning_match:
+                    reasoning = reasoning_match.group(1).strip()
 
-            # Extract the final grade
-            grade_match = re.search(r"FINAL GRADE:.*?([AB])", grading_response, re.DOTALL)
-            if grade_match:
-                grade_letter = grade_match.group(1)
-            else:
-                # Fallback: look for any A or B
-                fallback_match = re.search(r"(A|B)", grading_response)
-                if fallback_match:
-                    grade_letter = fallback_match.group(0)
+                grade_match = re.search(r"FINAL GRADE:.*?([AB])", grading_response, re.DOTALL)
+                if grade_match:
+                    grade_letter = grade_match.group(1)
+                else:
+                    fallback_match = re.search(r"(A|B)", grading_response)
+                    if fallback_match:
+                        grade_letter = fallback_match.group(0)
 
             # Store original grade before any corrections
             original_grade = grade_letter
 
-            # Validate judge consistency
-            try:
-                validation_result = validate_judge_consistency(reasoning, grade_letter, grading_response)
-            except Exception as e:
-                print(f"   ⚠️ Validation error: {e}")
+            # Validate judge consistency using structured GPT-5-nano validation
+            if self.enable_validation:
+                self.validation_stats["total_validations"] += 1
+
+                try:
+                    validation_result = validate_judge_reasoning_structured(
+                        reasoning=reasoning,
+                        grade=grade_letter,
+                        question=question,
+                        target=target,
+                        predicted=predicted_answer
+                    )
+
+                    # Track audit results (no overrides, just monitoring)
+                    if validation_result.get("validation_passed", True):
+                        self.validation_stats["audit_consistent"] += 1
+                except Exception as e:
+                    print(f"   ⚠️ Structured validation error: {e}")
+                    self.validation_stats["validation_errors"] += 1
+                    validation_result = {
+                        "validation": "CONSISTENT",
+                        "validation_passed": True,
+                        "confidence": 0.5,
+                        "reasoning": f"Validation failed, accepting original grade: {str(e)}",
+                        "suggested_grade": grade_letter,
+                        "original_grade": grade_letter,
+                        "validation_method": "fallback_due_to_error",
+                        "validation_error": str(e)
+                    }
+            else:
+                # Validation bypassed - accept original grade
+                self.validation_stats["validation_bypassed"] += 1
                 validation_result = {
-                    "reasoning_grade_consistent": True,
-                    "confidence_signals_detected": [],
+                    "validation": "BYPASSED",
                     "validation_passed": True,
-                    "inconsistency_type": None,
+                    "confidence": 1.0,
+                    "reasoning": "Validation bypassed by configuration",
                     "suggested_grade": grade_letter,
-                    "reasoning_indicators": [],
-                    "validation_error": str(e)
+                    "original_grade": grade_letter,
+                    "validation_method": "bypassed"
                 }
 
-            # Apply correction if validation failed and we have a suggested grade
-            if not validation_result["validation_passed"] and validation_result["suggested_grade"]:
-                print(f"   ⚠️ Judge inconsistency detected: {validation_result['inconsistency_type']}")
-                print(f"   🔄 Correcting grade from {original_grade} to {validation_result['suggested_grade']}")
-                grade_letter = validation_result["suggested_grade"]
+            # REMOVED: No more overrides - GPT-5 judge decision is FINAL
+            # Log audit analysis for transparency but do not change grades
+            if validation_result and not validation_result.get("validation_passed", True):
+                print(f"   🔍 Audit flagged potential concern (NO OVERRIDE)")
+                print(f"   📝 Audit reasoning: {validation_result.get('reasoning', '')}")
+                print(f"   📊 Judge confidence: {judge_confidence:.2f}, Audit confidence: {validation_result.get('confidence', 0.0):.2f}")
+                print(f"   ✅ GPT-5 judge decision stands: {grade_letter}")
+
+                # Track audit flags for monitoring (no overrides)
+                self.validation_stats['audit_flags'] += 1
+                audit_confidence = validation_result.get("confidence", 0.0)
+                if audit_confidence >= 0.8:
+                    self.validation_stats['high_confidence_flags'] += 1
+                else:
+                    self.validation_stats['low_confidence_flags'] += 1
+
+                # Log audit analysis to trail (no grade changes)
+                if self.audit_logger:
+                    with self._audit_lock:
+                        anon_provider_id = self._get_anonymous_provider_id(provider_name)
+                        # Log audit analysis (grade remains unchanged)
+                        self.audit_logger.log_judge_validation_override(
+                            question_id=question_id,
+                            question=question,
+                            target_answer=target,
+                            predicted_answer=predicted_answer,
+                            original_grade=grade_letter,  # Same as final
+                            validated_grade=grade_letter,  # No change
+                            validation_result=validation_result,
+                            judge_reasoning=reasoning,
+                            validator_reasoning=validation_result.get("reasoning", ""),
+                            metadata={
+                                "real_provider_name": provider_name,
+                                "blind_provider_id": anon_provider_id,
+                                "audit_only": True,  # Flag this as audit-only
+                                "judge_confidence": judge_confidence
+                            }
+                        )
 
             # Calculate threshold-aware scores (judge can give A, B, or sometimes NOT_ATTEMPTED)
             is_correct = grade_letter == "A"
