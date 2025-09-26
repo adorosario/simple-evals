@@ -8,7 +8,7 @@ load_dotenv()
 from custom_types import SamplerBase
 
 class CustomGPTSampler:
-    def __init__(self, model_name: str, max_tokens: int = 1024, temperature: float = 0.7, top_p: float = 0.95, frequency_penalty: float = 0.0, presence_penalty: float = 0.0, stop: str = None):
+    def __init__(self, model_name: str, max_tokens: int = 1024, temperature: float = 0, top_p: float = 0.95, frequency_penalty: float = 0.0, presence_penalty: float = 0.0, stop: str = None, custom_persona: str = "You are a helpful assistant. Use the knowledge base to provide accurate, detailed answers."):
         self.model_name = model_name
         self.max_tokens = max_tokens
         self.temperature = temperature
@@ -16,6 +16,7 @@ class CustomGPTSampler:
         self.frequency_penalty = frequency_penalty
         self.presence_penalty = presence_penalty
         self.stop = stop
+        self.custom_persona = custom_persona
         self.api_key = os.environ.get("CUSTOMGPT_API_KEY")
         self.project_id = os.environ.get("CUSTOMGPT_PROJECT")
 
@@ -30,7 +31,8 @@ class CustomGPTSampler:
 
             form_data = {
                 "response_source": "default",
-                "prompt": prompt
+                "prompt": prompt,
+                "custom_persona": self.custom_persona
             }
 
             headers = {
@@ -64,11 +66,12 @@ class CustomGPTSampler:
         return cls(
             model_name=config["model_name"],
             max_tokens=config.get("max_tokens", 1024),
-            temperature=config.get("temperature", 0.7),
+            temperature=config.get("temperature", 0),
             top_p=config.get("top_p", 0.95),
             frequency_penalty=config.get("frequency_penalty", 0.0),
             presence_penalty=config.get("presence_penalty", 0.0),
             stop=config.get("stop", None),
+            custom_persona=config.get("custom_persona", "You are a helpful assistant. Use the knowledge base to provide accurate, detailed answers."),
         )
 
     def to_config(self):
@@ -80,6 +83,7 @@ class CustomGPTSampler:
             "frequency_penalty": self.frequency_penalty,
             "presence_penalty": self.presence_penalty,
             "stop": self.stop,
+            "custom_persona": self.custom_persona,
         }
 
     @classmethod
@@ -87,5 +91,6 @@ class CustomGPTSampler:
         model_name = os.environ.get("CUSTOMGPT_MODEL_NAME")
         if model_name is None:
             raise ValueError("CUSTOMGPT_MODEL_NAME environment variable is not set")
-        return cls(model_name)
+        custom_persona = os.environ.get("CUSTOMGPT_PERSONA", "You are a helpful assistant. Use the knowledge base to provide accurate, detailed answers.")
+        return cls(model_name, custom_persona=custom_persona)
     

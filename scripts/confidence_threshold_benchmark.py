@@ -53,7 +53,7 @@ def setup_samplers(audit_logger=None):
         sampler = AuditedOpenAIVanillaSampler(
             model="gpt-4.1",
             system_message="You are a helpful assistant. Answer questions based on your training knowledge.",
-            temperature=0.3,
+            temperature=0,
             audit_logger=audit_logger
         )
         samplers["OpenAI_Vanilla"] = sampler
@@ -75,7 +75,7 @@ def setup_samplers(audit_logger=None):
             sampler = AuditedOpenAIRAGSampler(
                 model="gpt-4.1",
                 system_message="You are a helpful assistant. Use the knowledge base to provide accurate, detailed answers.",
-                temperature=0.3,
+                temperature=0,
                 audit_logger=audit_logger
             )
             samplers["OpenAI_RAG"] = sampler
@@ -146,11 +146,16 @@ def run_quality_evaluation(sampler_name, sampler, n_samples=10, audit_logger=Non
             "eval_result": eval_result  # Store full result for further analysis
         }
 
-        # Print detailed summary
+        # Print detailed summary with new metrics
+        metrics = aggregated_result['metrics']
         print(f"   📊 Performance:")
-        print(f"      Volume Score (traditional): {aggregated_result['metrics']['volume_score']:.3f}")
-        print(f"      Quality Score (penalty-aware): {aggregated_result['metrics']['quality_score']:.3f}")
-        print(f"      Attempted Rate: {aggregated_result['metrics']['attempted_rate']:.3f}")
+        print(f"      Volume Score (traditional): {metrics['volume_score']:.3f}")
+        print(f"      Quality Score (penalty-aware): {metrics['quality_score']:.3f}")
+        print(f"      Total Examples: {metrics.get('n_total', 'N/A')}")
+        print(f"      API Errors: {metrics.get('n_api_errors', 0)} ({metrics.get('api_error_rate', 0):.1%})")
+        print(f"      Attempted Rate: {metrics['attempted_rate']:.1%}")
+        print(f"      Abstention Rate: {metrics['abstention_rate']:.1%}")
+        print(f"      Success on Attempted: {metrics['accuracy_given_attempted']:.1%}")
 
         return aggregated_result
 
@@ -202,9 +207,11 @@ def run_parallel_quality_evaluations(samplers: Dict[str, Any], n_samples: int, a
                 results.append(result)
 
                 if result['success']:
-                    # Show performance summary
+                    # Show performance summary with API error info
                     metrics = result['metrics']
-                    print(f"   ✅ {sampler_name}: Volume={metrics['volume_score']:.3f}, Quality={metrics['quality_score']:.3f}, Attempted={metrics['attempted_rate']:.1%}")
+                    api_errors = metrics.get('n_api_errors', 0)
+                    error_info = f", API_Errors={api_errors}" if api_errors > 0 else ""
+                    print(f"   ✅ {sampler_name}: Volume={metrics['volume_score']:.3f}, Quality={metrics['quality_score']:.3f}, Attempted={metrics['attempted_rate']:.1%}{error_info}")
                 else:
                     print(f"   ❌ {sampler_name}: Failed")
 
@@ -529,12 +536,13 @@ def generate_quality_benchmark_report(results, output_dir, run_metadata):
                             <tr>
                                 <th>Rank</th>
                                 <th>Provider</th>
+                                <th>Total Examples</th>
+                                <th>API Errors</th>
                                 <th><i class="fas fa-shield-alt me-1" style="color: var(--quality-color);"></i>Quality Score</th>
                                 <th><i class="fas fa-chart-line me-1" style="color: var(--volume-color);"></i>Volume Score</th>
                                 <th>Attempted Rate</th>
                                 <th>Success Rate</th>
                                 <th>Abstention Rate</th>
-                                <th>Overconfidence Penalty</th>
                                 <th>Strategy Assessment</th>
                             </tr>
                         </thead>
@@ -570,16 +578,25 @@ def generate_quality_benchmark_report(results, output_dir, run_metadata):
         quality_class = "score-high" if quality_score > 0.6 else "score-medium" if quality_score > 0.3 else "score-low"
         volume_class = "score-high" if volume_score > 0.6 else "score-medium" if volume_score > 0.3 else "score-low"
 
+        # Get the new metrics with fallback for older data
+        n_total = metrics.get('n_total', metrics.get('conversations', 0))
+        n_api_errors = metrics.get('n_api_errors', 0)
+        api_error_rate = metrics.get('api_error_rate', 0)
+
+        # Style API errors based on severity
+        api_error_class = "score-high" if api_error_rate == 0 else "score-medium" if api_error_rate < 0.1 else "score-low"
+
         html_content += f"""
                             <tr>
                                 <td><strong>#{rank}</strong></td>
                                 <td><span class="provider-badge {provider_class}">{provider_name}</span></td>
+                                <td>{n_total}</td>
+                                <td><span class="{api_error_class}">{n_api_errors} ({api_error_rate:.1%})</span></td>
                                 <td><span class="score-quality {quality_class}">{quality_score:.3f}</span></td>
                                 <td><span class="score-volume {volume_class}">{volume_score:.3f}</span></td>
                                 <td>{attempted_rate:.1%}</td>
                                 <td>{metrics['accuracy_given_attempted']:.1%}</td>
                                 <td>{metrics['abstention_rate']:.1%}</td>
-                                <td><span class="score-low">{metrics['overconfidence_penalty']}</span></td>
                                 <td><span class="strategy-badge {strategy_class}">{strategy_assessment}</span></td>
                             </tr>"""
 
@@ -594,6 +611,8 @@ def generate_quality_benchmark_report(results, output_dir, run_metadata):
                 <h6><i class="fas fa-info-circle me-2"></i>Methodology Notes</h6>
                 <p><strong>80% Confidence Threshold:</strong> Based on OpenAI's research recommendation, judges only accept responses where they are >80% confident in the evaluation. This conservative threshold filters out borderline decisions that could distort results.</p>
                 <p><strong>Penalty Ratio 4.0:</strong> Wrong answers receive -4 points, making incorrect responses costly relative to abstaining (0 points). This encourages appropriate uncertainty rather than overconfident guessing.</p>
+                <p><strong>API Error Handling:</strong> Technical failures (timeouts, rate limits, network errors) are tracked separately and excluded from scoring calculations. This prevents technical issues from being confused with intentional abstentions.</p>
+                <p><strong>Intelligent Abstention Detection:</strong> Uses GPT-5-nano classifier with few-shot examples to distinguish intentional abstentions ("I don't know") from uncertain attempts ("I think it might be X"). Replaces brittle string matching with robust intent classification.</p>
                 <p><strong>Post-hoc Evaluation:</strong> Providers give natural responses without threshold contamination. The confidence framework is applied during evaluation, not during response generation.</p>
             </div>
 

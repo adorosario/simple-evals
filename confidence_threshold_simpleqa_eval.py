@@ -281,71 +281,207 @@ CHOICE_STRINGS = ["CORRECT", "INCORRECT"]
 CHOICE_LETTER_TO_STRING = dict(zip(CHOICE_LETTERS, CHOICE_STRINGS))
 
 
-def detect_abstention(response: str) -> bool:
+def classify_response_intent(response: str, question: str) -> Dict[str, any]:
     """
-    Detect if a provider response is an abstention (should get 0 points, not -4 penalty).
-    Returns True if the response is clearly an abstention.
+    Use GPT-5-nano to classify provider response intent with few-shot examples.
+    Returns: {"type": "abstention"|"attempt", "confidence": float, "reasoning": str}
     """
     if not response or response.strip() == "":
-        return True
+        return {
+            "type": "abstention",
+            "confidence": 1.0,
+            "reasoning": "Empty response indicates abstention"
+        }
 
-    response_lower = response.lower().strip()
+    # Create classifier using GPT-5-nano (lightweight, fast)
+    from sampler.chat_completion_sampler import ChatCompletionSampler
+    classifier = ChatCompletionSampler(model="gpt-5-nano", temperature=0.0)
 
-    # Direct abstention phrases
-    direct_abstention_phrases = [
-        "i don't know",
-        "i do not know",
-        "i'm not sure",
-        "i am not sure",
-        "not sure",
-        "cannot answer",
-        "can't answer",
-        "unable to answer",
-        "don't have enough information",
-        "do not have enough information",
-        "insufficient information",
-        "need more information",
-        "would need to research",
-        "would have to research",
-        "would need to check",
-        "would have to check",
-        "reach out to support",
-        "contact support",
-        "please check",
-        "please verify"
-    ]
+    classification_prompt = f"""Your task is to classify whether a provider's response represents an ABSTENTION (intentionally declining to answer) or an ATTEMPT (trying to provide an answer, even if uncertain or wrong).
 
-    # Knowledge base limitation phrases (common in RAG systems)
-    knowledge_limitation_phrases = [
-        "my knowledge base does not",
-        "knowledge base does not specify",
-        "knowledge base doesn't contain",
-        "knowledge base doesn't have",
-        "not in my knowledge base",
-        "my training data doesn't",
-        "training data does not",
-        "don't have access to",
-        "do not have access to",
-        "without access to",
-        "cannot access",
-        "can't access"
-    ]
+CLASSIFICATION RULES:
+- ABSTENTION: Provider explicitly declines to answer, states they lack information, or says they "could not find" the requested information
+- ATTEMPT: Provider gives an answer, even if hedged, uncertain, or potentially incorrect
 
-    # Check for direct abstention phrases
-    for phrase in direct_abstention_phrases:
-        if phrase in response_lower:
-            return True
+KEY ABSTENTION INDICATORS:
+- "I don't know" / "I do not know"
+- "I cannot" / "I can't" / "unable to"
+- "I could not find" / "could not locate"
+- "I don't have access to" / "no access"
+- "My knowledge base does not" / "not in my knowledge base"
+- "I'm sorry, but I could not" / "sorry, I cannot"
+- "Sorry" followed by inability expressions (very strong abstention signal)
 
-    # Check for knowledge limitation phrases
-    for phrase in knowledge_limitation_phrases:
-        if phrase in response_lower:
-            return True
+IMPORTANT: "Sorry" is typically used when providers CANNOT provide information, not when they're uncertain about correct answers.
 
-    # Check for very short non-informative responses
-    if len(response_lower) < 20 and any(word in response_lower for word in ["unknown", "unclear", "unsure", "uncertain"]):
-        return True
+ABSTENTION EXAMPLES:
+```
+Question: What are the names of Barack Obama's children?
+Response: I don't know the names of Barack Obama's children.
+→ ABSTENTION (explicit "I don't know")
 
-    return False
+Question: What is the capital of Bhutan?
+Response: I don't have enough information in my knowledge base to answer this question.
+→ ABSTENTION (knowledge limitation)
+
+Question: When was the first iPhone released?
+Response: I cannot answer this question without access to current information.
+→ ABSTENTION (cannot answer)
+
+Question: What is the population of Tokyo?
+Response: My training data doesn't include current population figures for Tokyo.
+→ ABSTENTION (training data limitation)
+
+Question: What is the DOI for paper X?
+Response: I'm sorry, but I could not find a DOI for the paper titled "X".
+→ ABSTENTION (could not find requested information)
+
+Question: What happened in the meeting?
+Response: I don't have access to that specific meeting information.
+→ ABSTENTION (no access to information)
+
+Question: What's the latest stock price?
+Response: I cannot provide current stock prices as I don't have real-time data.
+→ ABSTENTION (cannot provide due to data limitations)
+
+Question: What is the DOI for paper X?
+Response: Sorry, I don't have access to DOI information for that paper.
+→ ABSTENTION (sorry + no access)
+
+Question: What happened at the meeting?
+Response: I'm sorry, but I don't have information about that specific meeting.
+→ ABSTENTION (sorry + don't have information)
+
+Question: What's the password for the account?
+Response: Sorry, I cannot provide password information for security reasons.
+→ ABSTENTION (sorry + cannot provide)
+```
+
+ATTEMPT EXAMPLES:
+```
+Question: What are the names of Barack Obama's children?
+Response: I believe they are Malia and Sasha, though I'm not completely certain.
+→ ATTEMPT (provides answer with uncertainty hedge)
+
+Question: What is the capital of Bhutan?
+Response: I think it might be Thimphu, but I should double-check that.
+→ ATTEMPT (provides answer despite uncertainty)
+
+Question: When was the first iPhone released?
+Response: It was released sometime in 2007, if I remember correctly.
+→ ATTEMPT (provides answer with hedge)
+
+Question: What is the population of Tokyo?
+Response: Tokyo has approximately 14 million people, though this number changes frequently.
+→ ATTEMPT (provides answer with caveat)
+
+Question: Who won the 2020 World Series?
+Response: I'm not sure, but I think it might have been the Dodgers or possibly the Rays.
+→ ATTEMPT (uncertain but provides candidates)
+```
+
+Now classify this response:
+
+Question: {question}
+Response: {response}
+
+Provide your classification as:
+CLASSIFICATION: ABSTENTION or ATTEMPT
+CONFIDENCE: 0.0 to 1.0
+REASONING: Brief explanation of your decision
+
+Focus on whether the provider is TRYING to answer (even if uncertain) vs DECLINING to answer."""
+
+    try:
+        classification_messages = [
+            classifier._pack_message(content=classification_prompt, role="user")
+        ]
+
+        classification_response = classifier(classification_messages)
+
+        # Parse the response
+        classification_type = "attempt"  # default
+        confidence = 0.8  # default
+        reasoning = "Default classification due to parsing error"
+
+        # Extract classification
+        if "CLASSIFICATION:" in classification_response:
+            class_line = classification_response.split("CLASSIFICATION:")[1].split("\n")[0].strip().lower()
+            if "abstention" in class_line:
+                classification_type = "abstention"
+            elif "attempt" in class_line:
+                classification_type = "attempt"
+
+        # Extract confidence
+        if "CONFIDENCE:" in classification_response:
+            conf_line = classification_response.split("CONFIDENCE:")[1].split("\n")[0].strip()
+            try:
+                confidence = float(conf_line)
+            except:
+                confidence = 0.8
+
+        # Extract reasoning
+        if "REASONING:" in classification_response:
+            reasoning = classification_response.split("REASONING:")[1].strip()
+
+        return {
+            "type": classification_type,
+            "confidence": confidence,
+            "reasoning": reasoning,
+            "full_response": classification_response
+        }
+
+    except Exception as e:
+        # Fallback to basic heuristics if GPT-5-nano fails
+        response_lower = response.lower().strip()
+
+        # Strong abstention indicators
+        strong_abstention_phrases = [
+            "i don't know", "i do not know", "cannot answer", "can't answer",
+            "unable to answer", "my knowledge base does not", "not in my knowledge base",
+            "don't have enough information", "insufficient information",
+            "could not find", "could not locate", "i could not find",
+            "sorry, but i could not", "sorry, i cannot", "i'm sorry, but i could not",
+            "don't have access to", "do not have access to",
+            # Sorry patterns (strong abstention signals)
+            "sorry, i don't", "sorry, i do not", "sorry, i can't", "sorry, i cannot",
+            "i'm sorry, but i don't", "i'm sorry, but i can't", "i'm sorry, but i cannot",
+            "sorry, but i don't", "sorry, but i can't"
+        ]
+
+        for phrase in strong_abstention_phrases:
+            if phrase in response_lower:
+                return {
+                    "type": "abstention",
+                    "confidence": 0.9,
+                    "reasoning": f"Fallback classification: Contains strong abstention phrase '{phrase}'"
+                }
+
+        # Special check: "sorry" at the start is often an abstention signal
+        if response_lower.startswith("sorry") or response_lower.startswith("i'm sorry"):
+            # Check if it's followed by inability/limitation words
+            inability_words = ["i don't", "i do not", "i can't", "i cannot", "but i", "i could not", "no", "not"]
+            if any(word in response_lower for word in inability_words):
+                return {
+                    "type": "abstention",
+                    "confidence": 0.85,
+                    "reasoning": "Fallback classification: Starts with 'sorry' and contains inability expressions"
+                }
+
+        return {
+            "type": "attempt",
+            "confidence": 0.7,
+            "reasoning": f"Fallback classification: No clear abstention signals detected. Classifier error: {str(e)}"
+        }
+
+
+def detect_abstention(response: str) -> bool:
+    """
+    Legacy wrapper for backwards compatibility.
+    Uses intelligent classification instead of string matching.
+    """
+    classification = classify_response_intent(response, "")
+    return classification["type"] == "abstention"
 
 
 def validate_judge_consistency(reasoning: str, final_grade: str, full_response: str) -> dict:
@@ -736,87 +872,173 @@ class ConfidenceThresholdSimpleQAEval(Eval):
                     progress_pct = (completed_count / total_count) * 100
                     print(f"   📊 Provider progress: {completed_count}/{total_count} ({progress_pct:.1f}%)")
 
-        # Convert failed responses to abstention entries
+        # Convert failed responses to API error entries (NOT abstentions)
         for failed_response in failed_responses:
             row = failed_response["row"]
-            abstention_response = {
+            api_error_response = {
                 "question_id": failed_response["question_id"],
                 "question": row.get("problem", ""),
                 "target": row.get("answer", ""),
-                "response": "",  # Empty response indicates abstention
+                "response": "",  # Empty but marked as API error
                 "prompt_messages": [],
                 "provider_name": provider_name,
-                "error": failed_response["error"]
+                "api_error": failed_response["error"],  # Mark as API error, not abstention
+                "response_type": "api_error"
             }
-            provider_responses.append(abstention_response)
+            provider_responses.append(api_error_response)
 
         if failed_responses:
-            print(f"   ⚠️  {len(failed_responses)} questions failed and will be marked as abstentions")
+            print(f"   ⚠️  {len(failed_responses)} questions failed due to API errors (not abstentions)")
 
-        print(f"   ✅ Collected {len(provider_responses)} total responses ({len(provider_responses) - len(failed_responses)} successful, {len(failed_responses)} abstentions)")
+        print(f"   ✅ Collected {len(provider_responses)} total responses ({len(provider_responses) - len(failed_responses)} successful, {len(failed_responses)} API errors)")
         return provider_responses
 
     def _evaluate_single_response(self, response_data: Dict[str, any], threshold: ConfidenceThreshold) -> SingleEvalResult:
-        """Evaluate a single response against a threshold"""
+        """Evaluate a single response against a threshold with proper error/abstention separation"""
 
         provider_response = response_data["response"]
 
-        # First check if provider abstained (empty response or explicit abstention)
-        if not provider_response or provider_response.strip() == "":
-            # Empty response - clear abstention
+        # First check if this is an API error (exclude from all scoring)
+        if response_data.get("response_type") == "api_error":
+            # API error - exclude from scoring entirely
             grading_result = {
-                "grade_letter": "C",
-                "grade_string": "NOT_ATTEMPTED",
-                "reasoning": "Provider did not provide a response",
+                "grade_letter": "E",  # E for Error
+                "grade_string": "API_ERROR",
+                "reasoning": f"API error occurred: {response_data.get('api_error', 'Unknown error')}",
                 "full_response": "",
                 "latency_ms": 0,
                 "is_correct": False,
                 "is_incorrect": False,
-                "is_not_attempted": True,
-                "volume_score": 0.0,
-                "quality_score": 0.0,
-                "abstention_detected": True,
-                "abstention_type": "empty_response"
+                "is_not_attempted": False,
+                "is_api_error": True,
+                "volume_score": None,  # Excluded from volume calculations
+                "quality_score": None,  # Excluded from quality calculations
+                "abstention_detected": False,
+                "abstention_type": None,
+                "api_error": response_data.get("api_error")
             }
-        elif detect_abstention(provider_response):
-            # Explicit abstention detected - give 0 points, don't send to judge
-            print(f"   🛡️ Abstention detected: '{provider_response[:60]}...'")
-            grading_result = {
-                "grade_letter": "C",
-                "grade_string": "NOT_ATTEMPTED",
-                "reasoning": "Provider explicitly abstained from answering",
-                "full_response": provider_response,
-                "latency_ms": 0,
-                "is_correct": False,
-                "is_incorrect": False,
-                "is_not_attempted": True,
-                "volume_score": 0.0,
-                "quality_score": 0.0,
-                "abstention_detected": True,
-                "abstention_type": "explicit_abstention"
-            }
+        # Check if provider abstained (empty response or explicit abstention)
+        elif not provider_response or provider_response.strip() == "":
+            # Empty response - could be API error or abstention, check context
+            if response_data.get("api_error"):
+                # This is actually an API error, not an abstention
+                grading_result = {
+                    "grade_letter": "E",
+                    "grade_string": "API_ERROR",
+                    "reasoning": f"API error resulted in empty response: {response_data.get('api_error')}",
+                    "full_response": "",
+                    "latency_ms": 0,
+                    "is_correct": False,
+                    "is_incorrect": False,
+                    "is_not_attempted": False,
+                    "is_api_error": True,
+                    "volume_score": None,
+                    "quality_score": None,
+                    "abstention_detected": False,
+                    "abstention_type": None,
+                    "api_error": response_data.get("api_error")
+                }
+            else:
+                # True empty response abstention
+                grading_result = {
+                    "grade_letter": "C",
+                    "grade_string": "NOT_ATTEMPTED",
+                    "reasoning": "Provider did not provide a response",
+                    "full_response": "",
+                    "latency_ms": 0,
+                    "is_correct": False,
+                    "is_incorrect": False,
+                    "is_not_attempted": True,
+                    "is_api_error": False,
+                    "volume_score": 0.0,
+                    "quality_score": 0.0,
+                    "abstention_detected": True,
+                    "abstention_type": "empty_response"
+                }
         else:
-            # Grade the response with confidence threshold context
-            grading_result = self.grade_sample_with_explanation(
-                question_id=response_data["question_id"],
-                question=response_data["question"],
-                target=response_data["target"],
-                predicted_answer=provider_response,
-                provider_name=response_data["provider_name"],
-                threshold=threshold
-            )
+            # Non-empty response - use intelligent classification
+            classification = classify_response_intent(provider_response, response_data["question"])
 
-            # Add abstention metadata for non-abstentions
-            grading_result["abstention_detected"] = False
-            grading_result["abstention_type"] = None
+            if classification["type"] == "abstention":
+                # Intelligent abstention detection - give 0 points, don't send to judge
+                print(f"   🛡️ Abstention detected: '{provider_response[:60]}...' (confidence: {classification['confidence']:.2f})")
 
-        # Create HTML for each sample result
+                # Log abstention classifier decision to audit trail
+                if self.audit_logger:
+                    with self._audit_lock:
+                        self.audit_logger.log_abstention_classification(
+                            question_id=response_data["question_id"],
+                            question=response_data["question"],
+                            provider_response=provider_response,
+                            provider_name=response_data["provider_name"],
+                            classification_type=classification["type"],
+                            confidence=classification["confidence"],
+                            reasoning=classification["reasoning"],
+                            classifier_model="gpt-5-nano"
+                        )
+
+                grading_result = {
+                    "grade_letter": "C",
+                    "grade_string": "NOT_ATTEMPTED",
+                    "reasoning": f"Provider abstained: {classification['reasoning']}",
+                    "full_response": provider_response,
+                    "latency_ms": 0,
+                    "is_correct": False,
+                    "is_incorrect": False,
+                    "is_not_attempted": True,
+                    "is_api_error": False,
+                    "volume_score": 0.0,
+                    "quality_score": 0.0,
+                    "abstention_detected": True,
+                    "abstention_type": "intelligent_classification",
+                    "abstention_confidence": classification["confidence"],
+                    "abstention_reasoning": classification["reasoning"]
+                }
+            else:
+                # Response classified as attempt - send to judge
+                print(f"   📝 Attempt detected: '{provider_response[:60]}...' (confidence: {classification['confidence']:.2f})")
+
+                # Log attempt classifier decision to audit trail
+                if self.audit_logger:
+                    with self._audit_lock:
+                        self.audit_logger.log_abstention_classification(
+                            question_id=response_data["question_id"],
+                            question=response_data["question"],
+                            provider_response=provider_response,
+                            provider_name=response_data["provider_name"],
+                            classification_type=classification["type"],
+                            confidence=classification["confidence"],
+                            reasoning=classification["reasoning"],
+                            classifier_model="gpt-5-nano"
+                        )
+
+                grading_result = self.grade_sample_with_explanation(
+                    question_id=response_data["question_id"],
+                    question=response_data["question"],
+                    target=response_data["target"],
+                    predicted_answer=provider_response,
+                    provider_name=response_data["provider_name"],
+                    threshold=threshold
+                )
+
+                # Add classification metadata for attempts
+                grading_result["abstention_detected"] = False
+                grading_result["abstention_type"] = None
+                grading_result["is_api_error"] = False
+                grading_result["attempt_confidence"] = classification["confidence"]
+                grading_result["attempt_reasoning"] = classification["reasoning"]
+
+        # Create HTML for each sample result (handle None scores for API errors)
+        display_score = grading_result.get("volume_score")
+        if display_score is None:
+            display_score = "N/A (API Error)"
+
         html = common.jinja_env.from_string(common.HTML_JINJA).render(
             prompt_messages=response_data["prompt_messages"],
             next_message=dict(content=response_data["response"], role="assistant"),
-            score=grading_result["volume_score"],
+            score=display_score,
             correct_answer=response_data["target"],
-            extracted_answer=response_data["response"],
+            extracted_answer=response_data["response"] if not grading_result.get("is_api_error") else f"[API ERROR: {grading_result.get('api_error', 'Unknown')}]",
             grading_explanation=grading_result["reasoning"],
             grade=grading_result["grade_string"]
         )
@@ -825,16 +1047,22 @@ class ConfidenceThresholdSimpleQAEval(Eval):
 
         return SingleEvalResult(
             html=html,
-            score=grading_result["volume_score"],  # Keep traditional score for compatibility
+            score=grading_result.get("volume_score"),  # May be None for API errors
             convo=convo,
             metrics={
                 "is_correct": grading_result["is_correct"],
                 "is_incorrect": grading_result["is_incorrect"],
                 "is_not_attempted": grading_result["is_not_attempted"],
+                "is_api_error": grading_result.get("is_api_error", False),
                 "volume_score": grading_result["volume_score"],
                 "quality_score": grading_result["quality_score"],
-                "judge_latency_ms": grading_result["latency_ms"]
-                # Note: threshold_value, penalty_ratio, and threshold_name stored in HTML/convo to avoid NumPy aggregation issues
+                "judge_latency_ms": grading_result.get("latency_ms", 0),
+                "api_error": grading_result.get("api_error"),
+                "abstention_detected": grading_result.get("abstention_detected", False),
+                "abstention_type": grading_result.get("abstention_type"),
+                # Store classification metadata
+                "abstention_confidence": grading_result.get("abstention_confidence"),
+                "attempt_confidence": grading_result.get("attempt_confidence")
             }
         )
 
@@ -1180,27 +1408,38 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         return summary
 
     def _calculate_threshold_metrics(self, results: List[SingleEvalResult], threshold: ConfidenceThreshold) -> Dict[str, float]:
-        """Calculate comprehensive metrics for a threshold"""
+        """Calculate comprehensive metrics for a threshold with proper API error handling"""
         n_total = len(results)
 
-        # Basic counts
-        n_correct = sum(r.metrics["is_correct"] for r in results)
-        n_incorrect = sum(r.metrics["is_incorrect"] for r in results)
-        n_not_attempted = sum(r.metrics["is_not_attempted"] for r in results)
-        n_attempted = n_total - n_not_attempted
+        # Separate API errors from valid responses
+        api_error_results = [r for r in results if r.metrics.get("is_api_error", False)]
+        valid_results = [r for r in results if not r.metrics.get("is_api_error", False)]
 
-        # Volume strategy metrics (traditional)
-        volume_score_mean = sum(r.metrics["volume_score"] for r in results) / n_total
+        n_api_errors = len(api_error_results)
+        n_valid = len(valid_results)
 
-        # Quality strategy metrics (penalty-aware)
-        quality_scores = [r.metrics["quality_score"] for r in results]
-        quality_score_mean = sum(quality_scores) / n_total
+        # Basic counts from VALID responses only (API errors excluded)
+        n_correct = sum(r.metrics["is_correct"] for r in valid_results)
+        n_incorrect = sum(r.metrics["is_incorrect"] for r in valid_results)
+        n_not_attempted = sum(r.metrics["is_not_attempted"] for r in valid_results)
+        n_attempted = n_correct + n_incorrect  # Only count actual attempts
 
-        # Behavioral metrics
-        attempted_rate = n_attempted / n_total if n_total > 0 else 0
-        abstention_rate = n_not_attempted / n_total if n_total > 0 else 0
+        # Volume strategy metrics (traditional) - calculated on valid responses only
+        valid_volume_scores = [r.metrics["volume_score"] for r in valid_results if r.metrics["volume_score"] is not None]
+        volume_score_mean = sum(valid_volume_scores) / len(valid_volume_scores) if valid_volume_scores else 0
+
+        # Quality strategy metrics (penalty-aware) - calculated on valid responses only
+        valid_quality_scores = [r.metrics["quality_score"] for r in valid_results if r.metrics["quality_score"] is not None]
+        quality_score_mean = sum(valid_quality_scores) / len(valid_quality_scores) if valid_quality_scores else 0
+
+        # Behavioral metrics (based on valid responses, excluding API errors)
+        attempted_rate = n_attempted / n_valid if n_valid > 0 else 0
+        abstention_rate = n_not_attempted / n_valid if n_valid > 0 else 0
         accuracy_given_attempted = n_correct / n_attempted if n_attempted > 0 else 0
         error_rate_given_attempted = n_incorrect / n_attempted if n_attempted > 0 else 0
+
+        # API error metrics
+        api_error_rate = n_api_errors / n_total if n_total > 0 else 0
 
         # Conservative strategy analysis (from the paper)
         conservative_penalty = n_incorrect * threshold.penalty_ratio
@@ -1209,21 +1448,23 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         # Overconfidence penalty (questions answered incorrectly when should have abstained)
         overconfidence_penalty = n_incorrect
 
-        # Judge performance metrics
-        judge_latencies = [r.metrics["judge_latency_ms"] for r in results if "judge_latency_ms" in r.metrics]
+        # Judge performance metrics (only for responses that went to judge)
+        judge_latencies = [r.metrics["judge_latency_ms"] for r in results if r.metrics.get("judge_latency_ms") and r.metrics["judge_latency_ms"] > 0]
         avg_judge_latency_ms = sum(judge_latencies) / len(judge_latencies) if judge_latencies else 0
 
-        # Statistical analysis - confidence intervals for key metrics
-        volume_scores = [r.metrics["volume_score"] for r in results]
-        quality_scores = [r.metrics["quality_score"] for r in results]
+        # Statistical analysis - confidence intervals for key metrics (valid responses only)
+        volume_scores = [r.metrics["volume_score"] for r in valid_results if r.metrics.get("volume_score") is not None]
+        quality_scores = [r.metrics["quality_score"] for r in valid_results if r.metrics.get("quality_score") is not None]
 
-        # Calculate confidence intervals
-        volume_ci = calculate_confidence_interval(volume_scores)
-        quality_ci = calculate_confidence_interval(quality_scores)
+        # Calculate confidence intervals (only for valid responses)
+        volume_ci = calculate_confidence_interval(volume_scores) if volume_scores else (0, 0, 0)
+        quality_ci = calculate_confidence_interval(quality_scores) if quality_scores else (0, 0, 0)
 
-        # Binary outcome confidence intervals (using binomial distribution)
-        attempted_ci = calculate_confidence_interval([1 if r.metrics["is_correct"] or r.metrics["is_incorrect"] else 0 for r in results])
-        accuracy_attempted_scores = [r.metrics["is_correct"] for r in results if r.metrics["is_correct"] or r.metrics["is_incorrect"]]
+        # Binary outcome confidence intervals (using binomial distribution, valid responses only)
+        attempted_scores = [1 if r.metrics["is_correct"] or r.metrics["is_incorrect"] else 0 for r in valid_results]
+        attempted_ci = calculate_confidence_interval(attempted_scores) if attempted_scores else (0, 0, 0)
+
+        accuracy_attempted_scores = [r.metrics["is_correct"] for r in valid_results if r.metrics["is_correct"] or r.metrics["is_incorrect"]]
         accuracy_attempted_ci = calculate_confidence_interval(accuracy_attempted_scores) if accuracy_attempted_scores else (0, 0, 0)
 
         return {
@@ -1237,12 +1478,17 @@ class ConfidenceThresholdSimpleQAEval(Eval):
             "accuracy_given_attempted": accuracy_given_attempted,
             "error_rate_given_attempted": error_rate_given_attempted,
 
-            # Raw counts
+            # Raw counts (valid responses only)
             "n_correct": n_correct,
             "n_incorrect": n_incorrect,
             "n_not_attempted": n_not_attempted,
             "n_attempted": n_attempted,
-            "n_total": n_total,
+            "n_valid": n_valid,  # Valid responses (excluding API errors)
+            "n_total": n_total,  # Total including API errors
+
+            # API error metrics
+            "n_api_errors": n_api_errors,
+            "api_error_rate": api_error_rate,
 
             # Conservative strategy analysis
             "conservative_penalty": conservative_penalty,
@@ -1268,8 +1514,8 @@ class ConfidenceThresholdSimpleQAEval(Eval):
             # Raw data for cross-provider analysis (stored separately to avoid aggregation issues)
             # Note: volume_scores_raw and quality_scores_raw excluded from metrics to prevent NumPy issues
 
-            # Legacy compatibility
-            "is_correct": n_correct / n_total,
-            "is_incorrect": n_incorrect / n_total,
-            "is_not_attempted": n_not_attempted / n_total,
+            # Legacy compatibility (based on valid responses, excluding API errors)
+            "is_correct": n_correct / n_valid if n_valid > 0 else 0,
+            "is_incorrect": n_incorrect / n_valid if n_valid > 0 else 0,
+            "is_not_attempted": n_not_attempted / n_valid if n_valid > 0 else 0,
         }

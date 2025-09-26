@@ -117,6 +117,38 @@ class AuditLogger:
         with open(self.judge_log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
 
+    def log_abstention_classification(
+        self,
+        question_id: str,
+        question: str,
+        provider_response: str,
+        provider_name: str,
+        classification_type: str,
+        confidence: float,
+        reasoning: str,
+        classifier_model: str
+    ):
+        """Log abstention classifier decisions for audit trail"""
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "run_id": self.run_id,
+            "question_id": question_id,
+            "question": question,
+            "provider_response": provider_response,
+            "provider_name": provider_name,
+            "classifier": {
+                "model": classifier_model,
+                "classification": classification_type,
+                "confidence": confidence,
+                "reasoning": reasoning
+            }
+        }
+
+        # Write to a separate abstention classification log
+        abstention_log_file = self.run_dir / "abstention_classifications.jsonl"
+        with open(abstention_log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+
     def log_error(self, component: str, error: str, context: Dict[str, Any] = None):
         """Log errors with context"""
         error_entry = {

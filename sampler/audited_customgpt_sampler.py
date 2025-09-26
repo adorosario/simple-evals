@@ -27,11 +27,12 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
         self,
         model_name: str = "gpt-4.1",
         max_tokens: int = 1024,
-        temperature: float = 0.3,
+        temperature: float = 0,
         top_p: float = 0.95,
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
         stop: str = None,
+        custom_persona: str = "You are a helpful assistant. Use the knowledge base to provide accurate, detailed answers.",
         audit_logger=None
     ):
         super().__init__(audit_logger)
@@ -42,6 +43,7 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
         self.frequency_penalty = frequency_penalty
         self.presence_penalty = presence_penalty
         self.stop = stop
+        self.custom_persona = custom_persona
         self.api_key = os.environ.get("CUSTOMGPT_API_KEY")
         self.project_id = os.environ.get("CUSTOMGPT_PROJECT")
         self.provider_name = "CustomGPT_RAG"
@@ -108,7 +110,8 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
                     # Use multipart/form-data with query parameters
                     form_data = {
                         "response_source": "default",
-                        "prompt": prompt
+                        "prompt": prompt,
+                        "custom_persona": self.custom_persona
                     }
 
                     headers = {
@@ -154,13 +157,13 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
                             continue
                         else:
                             print(f"Max retries exceeded for gateway error {response.status_code}")
-                            return ""
+                            raise requests.exceptions.RequestException(f"Gateway error {response.status_code} after {max_retries} attempts")
 
                     else:
                         # Other HTTP errors
                         print(f"HTTP Error {response.status_code}: {response.text[:200]}")
                         if attempt == max_retries - 1:
-                            return ""
+                            raise requests.exceptions.RequestException(f"HTTP Error {response.status_code} after {max_retries} attempts")
                         time.sleep(base_delay)
                         continue
 
@@ -168,7 +171,7 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
                     print(f"Request timeout (attempt {attempt + 1}/{max_retries})")
                     if attempt == max_retries - 1:
                         print("Max retries exceeded due to timeouts")
-                        return ""
+                        raise requests.exceptions.Timeout(f"Request timeout after {max_retries} attempts")
                     time.sleep(base_delay * (attempt + 1))
                     continue
 
@@ -176,11 +179,12 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
                     print(f"Request exception: {e}")
                     if attempt == max_retries - 1:
                         print("Max retries exceeded due to request exceptions")
-                        return ""
+                        raise e  # Re-raise the original exception
                     time.sleep(base_delay)
                     continue
 
-            return ""  # Fallback if all retries failed
+            # This should never be reached due to explicit exception handling above
+            raise requests.exceptions.RequestException("CustomGPT API call failed after all retries")
 
     def _get_request_data(self, message_list: MessageList) -> Dict[str, Any]:
         """Get request data for audit logging"""
@@ -204,13 +208,19 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
                 "stop": self.stop,
                 "project_id": self.project_id,
                 "session_id": self._current_session_id,
+                "custom_persona": self.custom_persona,
                 "prompt": prompt,
                 "stream": "false",  # Query parameter format
                 "external_id": self._get_external_id(),
                 "lang": "en",
                 "response_source": "default",
                 "provider_type": "customgpt_rag",
-                "request_method": "multipart/form-data"
+                "request_method": "multipart/form-data",
+                "form_data_fields": {
+                    "response_source": "default",
+                    "prompt": prompt,
+                    "custom_persona": self.custom_persona
+                }
             }
         }
 
@@ -235,4 +245,5 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
     def from_env(cls, audit_logger=None):
         """Create sampler from environment variables with audit logging"""
         model_name = os.environ.get("CUSTOMGPT_MODEL_NAME", "gpt-4.1")
-        return cls(model_name=model_name, audit_logger=audit_logger)
+        custom_persona = os.environ.get("CUSTOMGPT_PERSONA", "You are a helpful assistant. Use the knowledge base to provide accurate, detailed answers.")
+        return cls(model_name=model_name, custom_persona=custom_persona, audit_logger=audit_logger)

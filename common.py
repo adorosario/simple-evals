@@ -157,14 +157,20 @@ def check_equality(sampler: SamplerBase, expr1: str, expr2: str):
 
 
 def _compute_stat(values: list, stat: str):
+    # Filter out None values to handle API errors properly
+    valid_values = [v for v in values if v is not None]
+
+    if not valid_values:
+        return 0.0  # Return 0 if no valid values (e.g., all API errors)
+
     if stat == "mean":
-        return np.mean(values)
+        return np.mean(valid_values)
     elif stat == "std":
-        return np.std(values)
+        return np.std(valid_values)
     elif stat == "min":
-        return np.min(values)
+        return np.min(valid_values)
     elif stat == "max":
-        return np.max(values)
+        return np.max(valid_values)
     else:
         raise ValueError(f"Unknown {stat =}")
 
@@ -181,9 +187,17 @@ def aggregate_results(
     name2values = defaultdict(list)
     htmls = []
     convos = []
+
+    # Fields to exclude from aggregation (non-numeric metadata)
+    exclude_from_aggregation = {
+        "api_error", "abstention_type", "abstention_reasoning", "attempt_reasoning"
+    }
+
     for single_eval_result in single_eval_results:
         for name, value in single_eval_result.metrics.items():
-            name2values[name].append(value)
+            # Skip non-numeric metadata fields that can't be aggregated
+            if name not in exclude_from_aggregation:
+                name2values[name].append(value)
         if single_eval_result.score is not None:
             name2values["score"].append(single_eval_result.score)
         htmls.append(single_eval_result.html)

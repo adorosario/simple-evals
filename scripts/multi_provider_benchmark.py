@@ -55,7 +55,7 @@ def setup_samplers(audit_logger=None):
         sampler = AuditedOpenAIVanillaSampler(
             model="gpt-4.1",  # Updated to use GPT-4.1
             system_message="You are a helpful assistant. Answer questions based on your training knowledge.",
-            temperature=0.3,
+            temperature=0,
             audit_logger=audit_logger
         )
         samplers["OpenAI_Vanilla"] = sampler
@@ -78,7 +78,7 @@ def setup_samplers(audit_logger=None):
             sampler = AuditedOpenAIRAGSampler(
                 model="gpt-4.1",  # Updated to use GPT-4.1
                 system_message="You are a helpful assistant. Use the knowledge base to provide accurate, detailed answers.",
-                temperature=0.3,
+                temperature=0,
                 audit_logger=audit_logger
             )
             samplers["OpenAI_RAG"] = sampler
