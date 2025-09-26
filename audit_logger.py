@@ -89,7 +89,9 @@ class AuditLogger:
         judge_response: str,
         grades: Dict[str, str],
         reasoning: str,
-        latency_ms: float
+        latency_ms: float,
+        judge_model_config: Dict[str, any] = None,
+        metadata: Dict[str, any] = None
     ):
         """Log LLM-As-A-Judge evaluation with full explanation"""
         log_entry = {
@@ -100,12 +102,18 @@ class AuditLogger:
             "target_answer": target_answer,
             "provider_responses": provider_responses,
             "judge": {
-                "model": "gpt-4.1",  # GPT-4.1
+                "model_config": judge_model_config or {
+                    "model": "UNKNOWN",  # Will be populated with actual config
+                    "temperature": "UNKNOWN",
+                    "response_format": "UNKNOWN",
+                    "service_tier": "UNKNOWN"
+                },
                 "prompt": judge_prompt,
                 "response": judge_response,
                 "reasoning": reasoning,
                 "latency_ms": latency_ms
             },
+            "metadata": metadata or {},
             "grades": grades,
             "analysis": {
                 "response_lengths": {provider: len(response) for provider, response in provider_responses.items()},
@@ -126,7 +134,8 @@ class AuditLogger:
         classification_type: str,
         confidence: float,
         reasoning: str,
-        classifier_model: str
+        classifier_model: str,
+        metadata: Dict[str, any] = None
     ):
         """Log abstention classifier decisions for audit trail"""
         log_entry = {
@@ -141,12 +150,36 @@ class AuditLogger:
                 "classification": classification_type,
                 "confidence": confidence,
                 "reasoning": reasoning
-            }
+            },
+            "metadata": metadata or {}
         }
 
         # Write to a separate abstention classification log
         abstention_log_file = self.run_dir / "abstention_classifications.jsonl"
         with open(abstention_log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+
+    def log_judge_consistency_validation(
+        self,
+        consistency_summary: Dict[str, any],
+        run_timestamp: str = None
+    ):
+        """Log judge consistency validation results for audit trail"""
+        log_entry = {
+            "timestamp": run_timestamp or datetime.utcnow().isoformat(),
+            "run_id": self.run_id,
+            "validation_type": "judge_consistency",
+            "summary": consistency_summary,
+            "validation_metadata": {
+                "temperature_expected": 0.0,
+                "deterministic_expected": True,
+                "critical_threshold": 1.0  # 100% consistency required
+            }
+        }
+
+        # Write to judge consistency validation log
+        consistency_log_file = self.run_dir / "judge_consistency_validation.jsonl"
+        with open(consistency_log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
 
     def log_error(self, component: str, error: str, context: Dict[str, Any] = None):

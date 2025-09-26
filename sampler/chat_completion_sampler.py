@@ -28,6 +28,9 @@ class ChatCompletionSampler(SamplerBase):
         temperature: float = 0.5,
         max_tokens: int = 1024,
         service_tier: str | None = None,
+        response_format: dict | None = None,
+        seed: int | None = None,
+        reasoning_effort: str | None = None,
     ):
         self.api_key_name = "OPENAI_API_KEY"
         self.client = OpenAI()
@@ -37,6 +40,9 @@ class ChatCompletionSampler(SamplerBase):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.service_tier = service_tier
+        self.response_format = response_format
+        self.seed = seed
+        self.reasoning_effort = reasoning_effort
         self.image_format = "url"
 
     def _handle_image(
@@ -71,13 +77,27 @@ class ChatCompletionSampler(SamplerBase):
                 # Use max_completion_tokens and default temperature for GPT-5 models
                 if self.model.startswith('gpt-5'):
                     api_params["max_completion_tokens"] = self.max_tokens
+
+                    # GPT-5 specific parameters for determinism
+                    if self.seed is not None:
+                        api_params["seed"] = self.seed
+                    if self.reasoning_effort is not None:
+                        api_params["reasoning_effort"] = self.reasoning_effort
                 else:
                     api_params["temperature"] = self.temperature
                     api_params["max_tokens"] = self.max_tokens
 
+                    # Non-GPT-5 models can still use seed for determinism
+                    if self.seed is not None:
+                        api_params["seed"] = self.seed
+
                 # Add service_tier if specified and model supports it (only GPT-5 supports flex)
                 if self.service_tier and self.model.startswith('gpt-5'):
                     api_params["service_tier"] = self.service_tier
+
+                # Add response_format if specified (structured outputs)
+                if self.response_format:
+                    api_params["response_format"] = self.response_format
 
                 response = self.client.chat.completions.create(**api_params)
                 return response.choices[0].message.content

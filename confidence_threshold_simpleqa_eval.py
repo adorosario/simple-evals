@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+from datetime import datetime
 
 import pandas
 import requests
@@ -175,104 +176,23 @@ def apply_bonferroni_correction(p_values: List[float], alpha: float = 0.05) -> T
 
 
 CONFIDENCE_THRESHOLD_GRADER_TEMPLATE = """
-Your job is to look at a question, a gold target, and a predicted answer, and assign a grade of either CORRECT or INCORRECT.
+Grade this answer as CORRECT (A) or INCORRECT (B).
 
-This evaluation is being conducted under the {threshold_name} confidence threshold framework (threshold: {threshold_value:.0%}, penalty ratio: {penalty_ratio}).
-
-IMPORTANT: You can only assign grades of CORRECT (A) or INCORRECT (B). There is no "NOT_ATTEMPTED" grade - provider abstentions are handled separately.
-
-Your response MUST include:
-1. A detailed reasoning section explaining your analysis
-2. A final grade (A for CORRECT, B for INCORRECT)
-3. A consistency check to verify your reasoning matches your final grade
-
-The following are examples of CORRECT predicted answers.
-```
-Question: What are the names of Barack Obama's children?
-Gold target: Malia Obama and Sasha Obama
-Predicted answer 1: sasha and malia obama
-Predicted answer 2: most people would say Malia and Sasha, but I'm not sure and would have to double check
-Predicted answer 3: Barack Obama has two daughters. Their names are Malia Ann and Natasha Marian, but they are commonly referred to as Malia Obama and Sasha Obama. Malia was born on July 4, 1998, and Sasha was born on June 10, 2001.
-```
-These predicted answers are all CORRECT because:
-    - They fully contain the important information in the gold target.
-    - They do not contain any information that contradicts the gold target.
-    - Only semantic meaning matters; capitalization, punctuation, grammar, and order don't matter.
-    - Hedging and guessing are permissible, provided that the gold target is fully included and the response contains no incorrect information or contradictions.
-
-The following are examples of INCORRECT predicted answers.
-```
-Question: What are the names of Barack Obama's children?
-Gold target: Malia and Sasha
-Predicted answer 1: Malia.
-Predicted answer 2: Malia, Sasha, and Susan.
-Predicted answer 3: Barack Obama does not have any children.
-Predicted answer 4: I think it's either Malia and Sasha. Or it could be Malia and Jackie. Or it could be Joey and Malia.
-Predicted answer 4: While I don't know their exact names, I can tell you that Barack Obama has three children.
-Predicted answer 5: It's possible you may mean Betsy and Olivia. However, you should clarify further details with updated references if necessary. Is that the correct answer?
-Predicted answer 6: It may be the case that Obama's child is named James. However, it's recommended to confirm the most accurate and updated information since this could change over time. This model may not always reflect the most current information.
-```
-These predicted answers are all INCORRECT because:
-    - A factual statement in the answer contradicts the gold target. Incorrect statements that have some hedging (e.g., "it is possible that", "although i'm not sure, i think") are also considered incorrect.
-
-The following are examples of NOT_ATTEMPTED predicted answers.
-```
-Question: What are the names of Barack Obama's children?
-Gold target: Malia and Sasha
-Predicted answer 1: I don't know.
-Predicted answer 2: I need more context about which Obama you are talking about.
-Predicted answer 3: Without researching the web, I cannot answer this question. However, I can tell you that Barack Obama has two children.
-Predicted answer 4: Barack Obama has two children. I know that one of them is Malia, but I'm not sure about the other one.
-```
-These predicted answers are all NOT_ATTEMPTED because:
-    - The important information in the gold target is not included in the answer.
-    - No statements in the answer contradict the gold target.
-
-CONFIDENCE THRESHOLD EVALUATION CONTEXT:
-This response is being evaluated under the {threshold_name} threshold framework where:
-- Threshold: {threshold_value:.0%} confidence required
-- Penalty ratio: {penalty_ratio} (wrong answers receive -{penalty_ratio} points)
-- Scoring: Correct = +1, Wrong = -{penalty_ratio}, Not attempted = 0
-
-When grading, assess the natural confidence signals in the response:
-- Does the response demonstrate appropriate certainty/uncertainty?
-- Would this response be suitable under a {threshold_value:.0%} confidence threshold?
-- Consider the penalty ratio of {penalty_ratio} when evaluating risk vs. reward
-
-Additional grading guidelines:
-- For grading questions where the gold target is a number, the predicted answer needs to be correct to the last significant figure in the gold answer.
-- The gold target may contain more information than the question. In such cases, the predicted answer only needs to contain the information that is in the question.
-- Do not punish predicted answers if they omit information that would be clearly inferred from the question.
-- Do not punish for typos in people's name if it's clearly the same name.
-
-Here is the new example to grade:
-```
 Question: {question}
 Gold target: {target}
 Predicted answer: {predicted_answer}
-```
 
-ANALYSIS AND REASONING:
-First, analyze the predicted answer step by step:
-1. Does the predicted answer contain the key information from the gold target?
-2. Does the predicted answer contradict any information in the gold target?
-3. Is the answer attempting to provide the requested information or declining to answer?
-4. What confidence signals does the response contain (certainty, hedging, uncertainty expressions)?
-5. Under the {threshold_name} framework (threshold: {threshold_value:.0%}, penalty: {penalty_ratio}), how appropriate is this response?
-6. Consider the specific grading guidelines above.
+GRADING RULES:
+- CORRECT: Answer contains key information from gold target without contradictions
+- INCORRECT: Answer contradicts gold target or provides wrong information
+- Semantic meaning matters, not formatting/capitalization
+- Allow hedging if core facts are correct
 
-Provide your detailed reasoning here, explaining your analysis of the predicted answer against the gold target and the confidence threshold framework.
-
-FINAL GRADE:
-Based on my analysis above, I grade this predicted answer as:
-
-A: CORRECT
-B: INCORRECT
-
-CONSISTENCY CHECK:
-Before finalizing, verify that your reasoning above supports your chosen grade. If your reasoning suggests the answer is correct, you should choose A. If your reasoning suggests the answer is incorrect, you should choose B.
-
-Just return the letters "A" or "B", with no additional text after the grade.
+Your JSON response must include:
+- reasoning: Brief analysis
+- grade: "A" (CORRECT) or "B" (INCORRECT)
+- confidence: 0.0-1.0 rating of your certainty
+- consistency_check: Confirm reasoning matches grade
 """.strip()
 
 
@@ -295,7 +215,11 @@ def classify_response_intent(response: str, question: str) -> Dict[str, any]:
 
     # Create classifier using GPT-5-nano (lightweight, fast)
     from sampler.chat_completion_sampler import ChatCompletionSampler
-    classifier = ChatCompletionSampler(model="gpt-5-nano", temperature=0.0)
+    classifier = ChatCompletionSampler(
+        model="gpt-5-nano",
+        seed=42,  # Fixed seed for deterministic classification
+        reasoning_effort="minimal"  # Fast, consistent classification
+    )
 
     classification_prompt = f"""Your task is to classify whether a provider's response represents an ABSTENTION (intentionally declining to answer) or an ATTEMPT (trying to provide an answer, even if uncertain or wrong).
 
@@ -591,13 +515,49 @@ class ConfidenceThresholdSimpleQAEval(Eval):
             if use_flex_tier:
                 grader_model = ChatCompletionSampler(
                     model="gpt-5",
-                    temperature=0.0,
-                    service_tier="flex"
+                    service_tier="flex",
+                    seed=42,  # Fixed seed for deterministic judge behavior
+                    reasoning_effort="minimal"  # Fast, consistent responses
                 )
             else:
                 grader_model = ChatCompletionSampler(
                     model="gpt-5",
-                    temperature=0.0
+                    seed=42,  # Fixed seed for deterministic judge behavior
+                    reasoning_effort="minimal",  # Fast, consistent responses
+                    # Add structured output support
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "judge_evaluation",
+                            "strict": True,
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "reasoning": {
+                                        "type": "string",
+                                        "description": "Step-by-step analysis of the predicted answer against the gold target"
+                                    },
+                                    "grade": {
+                                        "type": "string",
+                                        "enum": ["A", "B"],
+                                        "description": "A for CORRECT, B for INCORRECT"
+                                    },
+                                    "confidence": {
+                                        "type": "number",
+                                        "minimum": 0.0,
+                                        "maximum": 1.0,
+                                        "description": "Confidence in this evaluation (0.0 to 1.0)"
+                                    },
+                                    "consistency_check": {
+                                        "type": "string",
+                                        "description": "Verification that reasoning supports the chosen grade"
+                                    }
+                                },
+                                "required": ["reasoning", "grade", "confidence", "consistency_check"],
+                                "additionalProperties": False
+                            }
+                        }
+                    }
                 )
 
         with requests.get("https://openaipublic.blob.core.windows.net/simple-evals/simple_qa_test_set.csv") as response:
@@ -628,9 +588,203 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         for i, example in enumerate(self.examples):
             example['question_id'] = f"simpleqa_{i:04d}"
 
+        # Initialize blind evaluation system - provider anonymization
+        # Use class variable to persist mapping across instances
+        if not hasattr(ConfidenceThresholdSimpleQAEval, '_global_provider_anonymization'):
+            ConfidenceThresholdSimpleQAEval._global_provider_anonymization = {}
+        if not hasattr(ConfidenceThresholdSimpleQAEval, '_global_blind_evaluation_enabled'):
+            ConfidenceThresholdSimpleQAEval._global_blind_evaluation_enabled = True
+
+        self.provider_anonymization = ConfidenceThresholdSimpleQAEval._global_provider_anonymization
+        self.blind_evaluation_enabled = ConfidenceThresholdSimpleQAEval._global_blind_evaluation_enabled
+
+    @classmethod
+    def reset_blind_evaluation(cls):
+        """Reset the global blind evaluation system for a new benchmark run"""
+        cls._global_provider_anonymization = {}
+        cls._global_blind_evaluation_enabled = True
+        print("🔒 Blind evaluation system reset for new benchmark run")
+
     def _create_clean_prompt(self, question: str) -> str:
         """Create a clean question prompt without threshold instructions"""
         return question
+
+    def _get_anonymous_provider_id(self, provider_name: str) -> str:
+        """Get or create anonymous ID for provider to enable blind evaluation"""
+        if not self.blind_evaluation_enabled:
+            return provider_name
+
+        if provider_name not in self.provider_anonymization:
+            # Create deterministic but anonymous ID
+            provider_count = len(self.provider_anonymization) + 1
+            anon_id = f"Provider_{provider_count:02d}"
+            self.provider_anonymization[provider_name] = anon_id
+            print(f"   🔒 Blind evaluation: {provider_name} → {anon_id}")
+
+        return self.provider_anonymization[provider_name]
+
+    def reveal_provider_mapping(self) -> Dict[str, str]:
+        """Reveal the provider anonymization mapping for final reporting"""
+        if not self.blind_evaluation_enabled or not self.provider_anonymization:
+            return {}
+
+        print("\n🔓 Revealing Provider Anonymization Mapping:")
+        print("=" * 50)
+        mapping = {}
+        for real_name, anon_id in self.provider_anonymization.items():
+            print(f"   {anon_id} → {real_name}")
+            mapping[anon_id] = real_name
+        print("=" * 50)
+        return mapping
+
+    def _extract_judge_model_config(self) -> Dict[str, any]:
+        """Extract judge model configuration for audit logging"""
+        if not hasattr(self.grader_model, '__dict__'):
+            return {"model": "UNKNOWN", "error": "No model attributes accessible"}
+
+        config = {}
+
+        # Extract key parameters from the judge model
+        if hasattr(self.grader_model, 'model'):
+            config["model"] = self.grader_model.model
+        if hasattr(self.grader_model, 'temperature'):
+            config["temperature"] = self.grader_model.temperature
+        if hasattr(self.grader_model, 'response_format'):
+            config["response_format"] = getattr(self.grader_model, 'response_format', None)
+        if hasattr(self.grader_model, 'service_tier'):
+            config["service_tier"] = getattr(self.grader_model, 'service_tier', None)
+        if hasattr(self.grader_model, 'max_tokens'):
+            config["max_tokens"] = getattr(self.grader_model, 'max_tokens', None)
+        if hasattr(self.grader_model, 'top_p'):
+            config["top_p"] = getattr(self.grader_model, 'top_p', None)
+        if hasattr(self.grader_model, 'seed'):
+            config["seed"] = getattr(self.grader_model, 'seed', None)
+        if hasattr(self.grader_model, 'reasoning_effort'):
+            config["reasoning_effort"] = getattr(self.grader_model, 'reasoning_effort', None)
+
+        # Add timestamp for when config was captured
+        config["config_captured_at"] = datetime.utcnow().isoformat()
+
+        return config
+
+    def print_judge_configuration_summary(self):
+        """Print complete judge configuration for transparency"""
+        config = self._extract_judge_model_config()
+        print("\n🔧 JUDGE MODEL CONFIGURATION (Full Transparency for Independent Audit):")
+        print("=" * 80)
+        for key, value in config.items():
+            if key == "response_format" and isinstance(value, dict):
+                print(f"   {key}: {value.get('type', 'N/A')} ({value.get('json_schema', {}).get('name', 'N/A')})")
+            else:
+                print(f"   {key}: {value}")
+        print("=" * 80)
+
+    def validate_judge_consistency(self, sample_responses: List[Dict[str, any]], threshold: ConfidenceThreshold, n_runs: int = 3, sample_size: int = 10) -> Dict[str, any]:
+        """
+        Validate judge consistency by re-evaluating a sample of responses multiple times
+        This detects non-deterministic behavior that could indicate bias or technical issues
+        """
+        print(f"\n🔍 JUDGE CONSISTENCY VALIDATION:")
+        print(f"   Testing {sample_size} responses with {n_runs} runs each")
+        print(f"   Expected: 100% consistency with temperature=0.0")
+
+        # Select random sample of responses to test
+        import random
+        rng = random.Random(42)  # Fixed seed for reproducibility
+        sample = rng.sample(sample_responses, min(sample_size, len(sample_responses)))
+
+        consistency_results = []
+        total_inconsistencies = 0
+
+        for i, response_data in enumerate(sample):
+            print(f"   📊 Testing response {i+1}/{len(sample)}: {response_data['question_id']}")
+
+            # Run multiple evaluations of the same response
+            evaluations = []
+            for run in range(n_runs):
+                try:
+                    result = self.grade_sample_with_explanation(
+                        question_id=f"{response_data['question_id']}_consistency_run_{run+1}",
+                        question=response_data["question"],
+                        target=response_data["target"],
+                        predicted_answer=response_data["response"],
+                        provider_name=f"ConsistencyTest_{response_data.get('provider_name', 'Unknown')}",
+                        threshold=threshold
+                    )
+                    evaluations.append({
+                        "run": run + 1,
+                        "grade": result["grade_letter"],
+                        "reasoning": result["reasoning"],
+                        "latency_ms": result["latency_ms"]
+                    })
+                except Exception as e:
+                    print(f"      ❌ Run {run+1} failed: {e}")
+                    evaluations.append({
+                        "run": run + 1,
+                        "grade": "ERROR",
+                        "reasoning": f"Evaluation failed: {str(e)}",
+                        "latency_ms": 0
+                    })
+
+            # Analyze consistency
+            grades = [e["grade"] for e in evaluations if e["grade"] != "ERROR"]
+            is_consistent = len(set(grades)) <= 1
+
+            if not is_consistent:
+                total_inconsistencies += 1
+                print(f"      ⚠️  INCONSISTENT: Grades={grades}")
+            else:
+                print(f"      ✅ Consistent: Grade={grades[0] if grades else 'N/A'}")
+
+            consistency_results.append({
+                "question_id": response_data["question_id"],
+                "question": response_data["question"],
+                "target": response_data["target"],
+                "predicted_answer": response_data["response"],
+                "evaluations": evaluations,
+                "is_consistent": is_consistent,
+                "unique_grades": list(set(grades)),
+                "grade_distribution": {grade: grades.count(grade) for grade in set(grades)}
+            })
+
+        # Calculate consistency statistics
+        consistent_responses = sum(1 for r in consistency_results if r["is_consistent"])
+        consistency_rate = consistent_responses / len(consistency_results) if consistency_results else 0
+
+        consistency_summary = {
+            "total_responses_tested": len(consistency_results),
+            "consistent_responses": consistent_responses,
+            "inconsistent_responses": total_inconsistencies,
+            "consistency_rate": consistency_rate,
+            "runs_per_response": n_runs,
+            "expected_consistency_rate": 1.0,  # Should be 100% with temperature=0.0
+            "consistency_gap": 1.0 - consistency_rate,
+            "detailed_results": consistency_results
+        }
+
+        # Print summary
+        print(f"\n📊 CONSISTENCY VALIDATION RESULTS:")
+        print(f"   Responses tested: {len(consistency_results)}")
+        print(f"   Consistent responses: {consistent_responses}")
+        print(f"   Inconsistent responses: {total_inconsistencies}")
+        print(f"   Consistency rate: {consistency_rate:.1%}")
+
+        if consistency_rate < 1.0:
+            print(f"   🚨 CRITICAL: Judge showing non-deterministic behavior!")
+            print(f"   🚨 Expected 100% consistency with temperature=0.0")
+            print(f"   🚨 {total_inconsistencies} responses had inconsistent grades")
+        else:
+            print(f"   ✅ EXCELLENT: Judge is fully consistent")
+
+        # Log consistency validation results to audit trail
+        if self.audit_logger:
+            with self._audit_lock:
+                self.audit_logger.log_judge_consistency_validation(
+                    consistency_summary=consistency_summary,
+                    run_timestamp=datetime.utcnow().isoformat()
+                )
+
+        return consistency_summary
 
     def grade_sample_with_explanation(
         self,
@@ -733,16 +887,24 @@ class ConfidenceThresholdSimpleQAEval(Eval):
             # Log the judge evaluation if audit logger is available (thread-safe)
             if self.audit_logger:
                 with self._audit_lock:
+                    # Use anonymous provider ID for judge evaluation logging to maintain blindness
+                    anon_provider_id = self._get_anonymous_provider_id(provider_name)
+                    # Extract judge model configuration for complete audit trail
+                    judge_config = self._extract_judge_model_config()
                     self.audit_logger.log_judge_evaluation(
                         question_id=question_id,
                         question=question,
                         target_answer=target,
-                        provider_responses={provider_name: predicted_answer},
+                        provider_responses={anon_provider_id: predicted_answer},
                         judge_prompt=grader_prompt,
                         judge_response=grading_response,
-                        grades={provider_name: CHOICE_LETTER_TO_STRING.get(grade_letter, "NOT_ATTEMPTED")},
+                        grades={anon_provider_id: CHOICE_LETTER_TO_STRING.get(grade_letter, "NOT_ATTEMPTED")},
                         reasoning=reasoning,
-                        latency_ms=latency_ms
+                        latency_ms=latency_ms,
+                        # CRITICAL: Include complete judge model configuration for independent audit
+                        judge_model_config=judge_config,
+                        # Add metadata to track real provider name for final reporting
+                        metadata={"real_provider_name": provider_name, "blind_provider_id": anon_provider_id}
                     )
 
             return {
@@ -769,6 +931,8 @@ class ConfidenceThresholdSimpleQAEval(Eval):
 
             if self.audit_logger:
                 with self._audit_lock:
+                    # Include judge config even in error cases for complete audit trail
+                    judge_config = self._extract_judge_model_config()
                     self.audit_logger.log_error(
                         component="confidence_threshold_grader",
                         error=str(e),
@@ -776,7 +940,8 @@ class ConfidenceThresholdSimpleQAEval(Eval):
                             "question_id": question_id,
                             "question": question,
                             "provider": provider_name,
-                            "threshold": threshold.name
+                            "threshold": threshold.name,
+                            "judge_config": judge_config
                         }
                     )
 
@@ -966,15 +1131,17 @@ class ConfidenceThresholdSimpleQAEval(Eval):
                 # Log abstention classifier decision to audit trail
                 if self.audit_logger:
                     with self._audit_lock:
+                        anon_provider_id = self._get_anonymous_provider_id(response_data["provider_name"])
                         self.audit_logger.log_abstention_classification(
                             question_id=response_data["question_id"],
                             question=response_data["question"],
                             provider_response=provider_response,
-                            provider_name=response_data["provider_name"],
+                            provider_name=anon_provider_id,  # Use anonymous ID
                             classification_type=classification["type"],
                             confidence=classification["confidence"],
                             reasoning=classification["reasoning"],
-                            classifier_model="gpt-5-nano"
+                            classifier_model="gpt-5-nano",
+                            metadata={"real_provider_name": response_data["provider_name"]}
                         )
 
                 grading_result = {
@@ -1001,15 +1168,17 @@ class ConfidenceThresholdSimpleQAEval(Eval):
                 # Log attempt classifier decision to audit trail
                 if self.audit_logger:
                     with self._audit_lock:
+                        anon_provider_id = self._get_anonymous_provider_id(response_data["provider_name"])
                         self.audit_logger.log_abstention_classification(
                             question_id=response_data["question_id"],
                             question=response_data["question"],
                             provider_response=provider_response,
-                            provider_name=response_data["provider_name"],
+                            provider_name=anon_provider_id,  # Use anonymous ID
                             classification_type=classification["type"],
                             confidence=classification["confidence"],
                             reasoning=classification["reasoning"],
-                            classifier_model="gpt-5-nano"
+                            classifier_model="gpt-5-nano",
+                            metadata={"real_provider_name": response_data["provider_name"]}
                         )
 
                 grading_result = self.grade_sample_with_explanation(
@@ -1145,6 +1314,31 @@ class ConfidenceThresholdSimpleQAEval(Eval):
 
         # Calculate metrics
         aggregate_metrics = self._calculate_threshold_metrics(results, threshold)
+
+        # Run judge consistency validation on a sample of provider responses
+        print(f"\n🔍 Running judge consistency validation...")
+        try:
+            consistency_validation = self.validate_judge_consistency(
+                sample_responses=provider_responses,
+                threshold=threshold,
+                n_runs=3,  # Test each response 3 times
+                sample_size=min(10, len(provider_responses))  # Test up to 10 responses
+            )
+            # Add consistency metrics to the results
+            aggregate_metrics["judge_consistency"] = {
+                "consistency_rate": consistency_validation["consistency_rate"],
+                "inconsistent_responses": consistency_validation["inconsistent_responses"],
+                "total_tested": consistency_validation["total_responses_tested"],
+                "consistency_gap": consistency_validation["consistency_gap"]
+            }
+        except Exception as e:
+            print(f"   ⚠️ Consistency validation failed: {e}")
+            aggregate_metrics["judge_consistency"] = {
+                "consistency_rate": None,
+                "inconsistent_responses": None,
+                "total_tested": 0,
+                "error": str(e)
+            }
 
         # Create EvalResult
         base_result = common.aggregate_results(results)

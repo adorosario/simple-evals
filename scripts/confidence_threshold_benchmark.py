@@ -157,6 +157,19 @@ def run_quality_evaluation(sampler_name, sampler, n_samples=10, audit_logger=Non
         print(f"      Abstention Rate: {metrics['abstention_rate']:.1%}")
         print(f"      Success on Attempted: {metrics['accuracy_given_attempted']:.1%}")
 
+        # Display judge consistency results if available
+        if 'judge_consistency' in metrics:
+            consistency = metrics['judge_consistency']
+            if consistency.get('consistency_rate') is not None:
+                consistency_rate = consistency['consistency_rate']
+                if consistency_rate >= 1.0:
+                    print(f"      Judge Consistency: {consistency_rate:.1%} ✅")
+                else:
+                    print(f"      Judge Consistency: {consistency_rate:.1%} ⚠️")
+                    print(f"      Inconsistent Responses: {consistency.get('inconsistent_responses', 0)}/{consistency.get('total_tested', 0)}")
+            else:
+                print(f"      Judge Consistency: Error ({consistency.get('error', 'Unknown')})")
+
         return aggregated_result
 
     except Exception as e:
@@ -751,6 +764,13 @@ def main():
     run_id = create_run_id()
     audit_logger = AuditLogger(run_id, output_dir)
 
+    # Reset blind evaluation system for new benchmark run
+    ConfidenceThresholdSimpleQAEval.reset_blind_evaluation()
+
+    # Display judge configuration for full transparency
+    temp_eval = ConfidenceThresholdSimpleQAEval(num_examples=1, audit_logger=audit_logger, use_flex_tier=use_flex_tier)
+    temp_eval.print_judge_configuration_summary()
+
     print(f"\n📋 Audit Logging:")
     print(f"   Run ID: {run_id}")
     print(f"   Logs directory: {audit_logger.run_dir}")
@@ -901,6 +921,9 @@ def main():
         # Create evaluator instance for statistical analysis
         eval_instance = ConfidenceThresholdSimpleQAEval(num_examples=n_samples)
         statistical_analysis = eval_instance.analyze_statistical_significance(provider_results)
+
+        # Reveal provider anonymization mapping after analysis is complete
+        eval_instance.reveal_provider_mapping()
 
         # Print statistical summary
         summary = statistical_analysis["summary"]
