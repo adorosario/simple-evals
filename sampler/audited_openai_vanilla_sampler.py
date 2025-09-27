@@ -26,7 +26,7 @@ class AuditedOpenAIVanillaSampler(AuditedSamplerBase):
         self,
         model: str = "gpt-4.1",  # GPT-4.1
         system_message: str | None = None,
-        temperature: float = 0.3,
+        temperature: float = 0,
         max_tokens: int = 1024,
         audit_logger=None
     ):

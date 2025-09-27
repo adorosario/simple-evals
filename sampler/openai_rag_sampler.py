@@ -26,7 +26,7 @@ class OpenAIRAGSampler(SamplerBase):
         model: str = "gpt-4o",
         vector_store_id: str | None = None,
         system_message: str | None = None,
-        temperature: float = 0.5,
+        temperature: float = 0,
         max_tokens: int = 1024,
     ):
         self.api_key_name = "OPENAI_API_KEY"
@@ -119,7 +119,7 @@ class OpenAIRAGSampler(SamplerBase):
             model=config.get("model", "gpt-4o"),
             vector_store_id=config.get("vector_store_id"),
             system_message=config.get("system_message"),
-            temperature=config.get("temperature", 0.5),
+            temperature=config.get("temperature", 0),
             max_tokens=config.get("max_tokens", 1024),
         )
 

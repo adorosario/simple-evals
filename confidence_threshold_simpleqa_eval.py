@@ -615,12 +615,14 @@ class ConfidenceThresholdSimpleQAEval(Eval):
                 grader_model = ChatCompletionSampler(
                     model="gpt-5",
                     service_tier="flex",
+                    temperature=0,  # Deterministic evaluation
                     seed=42,  # Fixed seed for deterministic judge behavior
                     reasoning_effort="minimal"  # Fast, consistent responses
                 )
             else:
                 grader_model = ChatCompletionSampler(
                     model="gpt-5",
+                    temperature=0,  # Deterministic evaluation
                     seed=42,  # Fixed seed for deterministic judge behavior
                     reasoning_effort="minimal",  # Fast, consistent responses
                     # Add structured output support

@@ -25,7 +25,7 @@ class ChatCompletionSampler(SamplerBase):
         self,
         model: str = "gpt-3.5-turbo",
         system_message: str | None = None,
-        temperature: float = 0.5,
+        temperature: float = 0,
         max_tokens: int = 1024,
         service_tier: str | None = None,
         response_format: dict | None = None,

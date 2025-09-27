@@ -27,7 +27,7 @@ class AuditedOpenAIRAGSampler(AuditedSamplerBase):
         model: str = "gpt-4.1",  # GPT-4.1
         vector_store_id: str | None = None,
         system_message: str | None = None,
-        temperature: float = 0.3,
+        temperature: float = 0,
         max_tokens: int = 1024,
         audit_logger=None
     ):
