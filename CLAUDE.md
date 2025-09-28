@@ -56,11 +56,20 @@ docker compose run --rm simple-evals python scripts/multi_provider_benchmark.py 
 
 **Knowledge Base Management:**
 ```bash
-# Build knowledge base from URLs
+# Download pre-built knowledge base and cache (RECOMMENDED - saves hours)
+docker compose run --rm simple-evals python scripts/download_and_extract_kb.py
+
+# Alternative: Build knowledge base from URLs (slow, only if needed)
 docker compose run --rm simple-evals python scripts/build_knowledge_base.py
 
 # Upload knowledge base to OpenAI vector store
 docker compose run --rm simple-evals python scripts/robust_upload_knowledge_base.py knowledge_base_full --store-name "MyStore"
+
+# Knowledge base utilities
+docker compose run --rm simple-evals python scripts/download_and_extract_kb.py --list        # Check asset status
+docker compose run --rm simple-evals python scripts/download_and_extract_kb.py --cache-only  # Download only cache
+docker compose run --rm simple-evals python scripts/download_and_extract_kb.py --kb-only     # Download only knowledge bases
+docker compose run --rm simple-evals python scripts/download_and_extract_kb.py --force       # Force re-download
 ```
 
 **Installation/Dependencies:**
