@@ -9,7 +9,12 @@ import json
 import pandas as pd
 from datetime import datetime
 import os
+import sys
 from typing import Dict, List, Tuple, Any
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import common
 from simpleqa_eval import SimpleQAEval
 from sampler.chat_completion_sampler import ChatCompletionSampler, OPENAI_SYSTEM_MESSAGE_API

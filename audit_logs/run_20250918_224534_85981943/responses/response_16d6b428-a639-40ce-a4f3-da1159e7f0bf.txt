@@ -1,5 +1,0 @@
-In the 1906 Bodmin by-election, Freeman Freeman-Thomas won with 4,202 votes, while George Sandys received 2,942 votes. To find out how many more votes Freeman-Thomas won than Sandys, you subtract Sandys' votes from Freeman-Thomas' votes:
-
-4,202 - 2,942 = 1,260
-
-Freeman Freeman-Thomas won 1,260 more votes than George Sandys in the 1906 Bodmin by-election.
