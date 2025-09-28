@@ -27,7 +27,7 @@ import tempfile
 
 # GitHub release configuration
 GITHUB_REPO = "adorosario/simple-evals"
-RELEASE_TAG = "kb-v1.0"
+RELEASE_TAG = "kb-v1.1"
 BASE_URL = f"https://github.com/{GITHUB_REPO}/releases/download/{RELEASE_TAG}"
 
 # Asset configuration
