@@ -1,356 +1,286 @@
-from fastapi import FastAPI, HTTPException, Body
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, Union, AsyncGenerator
-import json
-import pandas as pd
-import asyncio
-import common
-import hashlib
-# from drop_eval import DropEval
-# from gpqa_eval import GPQAEval
-# from humaneval_eval import HumanEval
-# from math_eval import MathEval
-# from mgsm_eval import MGSMEval
-# from mmlu_eval import MMLUEval
-from simpleqa_eval import SimpleQAEval
-from sampler.chat_completion_sampler import (
-    OPENAI_SYSTEM_MESSAGE_API,
-    OPENAI_SYSTEM_MESSAGE_CHATGPT,
-    ChatCompletionSampler,
-)
+#!/usr/bin/env python3
+"""
+Main RAG Benchmark Runner with Automatic Forensic Analysis
+
+This script runs the complete RAG evaluation pipeline:
+1. Confidence threshold benchmark evaluation
+2. Penalty analysis for failed cases
+3. GPT-5 deep forensic analysis
+4. Engineering post-mortem report generation
+5. Beautiful HTML forensic dashboard creation
+
+Usage:
+    python main.py [--examples N] [--debug] [--max-workers N] [--output-dir DIR]
+
+Examples:
+    python main.py --debug                    # Quick 10-question debug run
+    python main.py --examples 200             # Full 200-question evaluation
+    python main.py --examples 50 --debug      # 50 questions with verbose output
+"""
+
+import subprocess
+import sys
+import argparse
+import time
+from pathlib import Path
 from datetime import datetime
-import os
-from sampler.o1_chat_completion_sampler import O1ChatCompletionSampler
-from sampler.customgpt_sampler import CustomGPTSampler
-from sampler.claude_sampler import ClaudeCompletionSampler, CLAUDE_SYSTEM_MESSAGE_LMSYS
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
-app = FastAPI(title="Model Evaluator API", 
-              description="API for running evaluations on language models")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-# Track active evaluations
-active_evaluations = {}
-app.mount("/results", StaticFiles(directory="./results"), name="results")
-# Model definitions
-AVAILABLE_MODELS = {
-    "gpt-4o-2024-11-20_assistant": lambda: ChatCompletionSampler(
-        model="gpt-4o-2024-11-20",
-        system_message=OPENAI_SYSTEM_MESSAGE_API,
-        max_tokens=2048,
-    ),
-    "gpt-4o-2024-11-20_chatgpt": lambda: ChatCompletionSampler(
-        model="gpt-4o-2024-11-20",
-        system_message=OPENAI_SYSTEM_MESSAGE_CHATGPT,
-        max_tokens=2048,
-    ),
-    "o1-preview": lambda: O1ChatCompletionSampler(
-        model="o1-preview",
-    ),
-    "o1-mini": lambda: O1ChatCompletionSampler(
-        model="o1-mini",
-    ),
-    "gpt-4-turbo-2024-04-09_assistant": lambda: ChatCompletionSampler(
-        model="gpt-4-turbo-2024-04-09",
-        system_message=OPENAI_SYSTEM_MESSAGE_API,
-    ),
-    "gpt-4-turbo-2024-04-09_chatgpt": lambda: ChatCompletionSampler(
-        model="gpt-4-turbo-2024-04-09",
-        system_message=OPENAI_SYSTEM_MESSAGE_CHATGPT,
-    ),
-    "gpt-4o_assistant": lambda: ChatCompletionSampler(
-        model="gpt-4o",
-        system_message=OPENAI_SYSTEM_MESSAGE_API,
-        max_tokens=2048,
-    ),
-    "gpt-4o_chatgpt": lambda: ChatCompletionSampler(
-        model="gpt-4o",
-        system_message=OPENAI_SYSTEM_MESSAGE_CHATGPT,
-        max_tokens=2048,
-    ),
-    "gpt-4o-mini-2024-07-18": lambda: ChatCompletionSampler(
-        model="gpt-4o-mini-2024-07-18",
-        system_message=OPENAI_SYSTEM_MESSAGE_API,
-        max_tokens=2048,
-    ),
-    "claude-3-opus-20240229_empty": lambda: ClaudeCompletionSampler(
-        model="claude-3-opus-20240229",
-        system_message=CLAUDE_SYSTEM_MESSAGE_LMSYS,
-    ),
-    "customgpt": lambda: CustomGPTSampler(model_name="gpt-3.5-turbo"),
-}
+def run_command(cmd, description="", cwd=None):
+    """Run a command and handle errors gracefully"""
+    print(f"\n🚀 {description}")
+    print(f"Command: {' '.join(cmd)}")
+    print("-" * 60)
 
-# Evaluation definitions
-AVAILABLE_EVALUATIONS = [
-    "simpleqa"
-]
+    start_time = time.time()
 
-class EvaluationRequest(BaseModel):
-    models: List[str] = Field(..., description="List of model names to evaluate")
-    evaluations: List[str] = Field(..., description="List of evaluation names to run")
-    debug: bool = Field(False, description="Run in debug mode")
-    examples: Optional[int] = Field(None, description="Number of examples to use (overrides default)")
-    save_results: bool = Field(True, description="Whether to save results to disk")
-    output_dir: Optional[str] = Field(None, description="Custom output directory for results")
-
-def generate_request_id(request_data: Dict) -> str:
-    """Generate a unique hash for the request based on its contents and timestamp"""
-    request_str = json.dumps(request_data, sort_keys=True)
-    unique_input = f"{request_str}-{datetime.now().isoformat()}"
-    return hashlib.md5(unique_input.encode()).hexdigest()
-
-def get_evals(eval_name, debug_mode, num_examples=None):
-    grading_sampler = ChatCompletionSampler(model="gpt-4o")
-    equality_checker = ChatCompletionSampler(model="gpt-4-turbo-preview")
-    
-    match eval_name:
-        case "simpleqa":
-            return SimpleQAEval(
-                grader_model=grading_sampler,
-                num_examples=10 if debug_mode else num_examples,
-            )
-        case _:
-            raise Exception(f"Unrecognized eval type: {eval_name}")
-
-async def run_evaluations(request: EvaluationRequest, request_id: str) -> AsyncGenerator[str, None]:
-    """Run evaluations and yield results directly as they become available"""
-    results_dir = request.output_dir or f"results/{request_id}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-    
-    if request.save_results:
-        os.makedirs(results_dir, exist_ok=True)
-    
-    merge_metrics = []
-    mergekey2resultpath = {}
-    
     try:
-        # Mark evaluation as active
-        active_evaluations[request_id] = {
-            "start_time": datetime.now().isoformat(),
-            "models": request.models,
-            "evaluations": request.evaluations,
-            "status": "running"
-        }
-        
-        # Stream preliminary info
-        yield json.dumps({
-            "type": "info",
-            "request_id": request_id,
-            "message": f"Starting evaluations for models: {', '.join(request.models)}",
-            "timestamp": datetime.now().isoformat()
-        }) + "\n"
-        
-        for model_name in request.models:
-            if model_name not in AVAILABLE_MODELS:
-                yield json.dumps({
-                    "type": "error",
-                    "request_id": request_id,
-                    "message": f"Model '{model_name}' not found. Skipping.",
-                    "timestamp": datetime.now().isoformat()
-                }) + "\n"
-                continue
-            
-            # Initialize the sampler
-            sampler = AVAILABLE_MODELS[model_name]()
-            
-            for eval_name in request.evaluations:
-                if eval_name not in AVAILABLE_EVALUATIONS:
-                    yield json.dumps({
-                        "type": "error",
-                        "request_id": request_id,
-                        "message": f"Evaluation '{eval_name}' not found. Skipping.",
-                        "timestamp": datetime.now().isoformat()
-                    }) + "\n"
-                    continue
-                
-                yield json.dumps({
-                    "type": "status",
-                    "request_id": request_id,
-                    "message": f"Running {eval_name} evaluation for {model_name}",
-                    "timestamp": datetime.now().isoformat()
-                }) + "\n"
-                
-                try:
-                    # Update active evaluation status
-                    active_evaluations[request_id]["current_eval"] = f"{eval_name} on {model_name}"
-                    
-                    # Run the evaluation
-                    eval_obj = get_evals(eval_name, request.debug, request.examples)
-                    result = eval_obj(sampler)
-                    
-                    # Process and save results
-                    file_stem = f"{eval_name}_{model_name}"
-                    debug_suffix = "_DEBUG" if request.debug else ""
-                    
-                    metrics = result.metrics | {"score": result.score}
-                    
-                    if request.save_results:
-                        report_filename = os.path.join(results_dir, f"{file_stem}{debug_suffix}.html")
-                        with open(report_filename, "w") as fh:
-                            fh.write(common.make_report(result))
-                            
-                        result_filename = os.path.join(results_dir, f"{file_stem}{debug_suffix}.json")
-                        with open(result_filename, "w") as f:
-                            f.write(json.dumps(metrics, indent=2))
-                        
-                        mergekey2resultpath[file_stem] = result_filename
-                    
-                    # Stream results
-                    result_data = {
-                        "type": "result",
-                        "request_id": request_id,
-                        "eval_name": eval_name,
-                        "model_name": model_name,
-                        "metrics": metrics,
-                        "timestamp": datetime.now().isoformat()
-                    }
-                    
-                    if request.save_results:
-                        result_data["report_path"] = report_filename
-                        result_data["result_path"] = result_filename
-                    
-                    yield json.dumps(result_data) + "\n"
-                    
-                    # Allow a small pause between operations to manage resources
-                    await asyncio.sleep(0.1)
-                    
-                    # Save for summary
-                    metric_value = metrics.get("f1_score", metrics.get("score", None))
-                    merge_metrics.append({
-                        "eval_name": eval_name,
-                        "model_name": model_name,
-                        "metric": metric_value
-                    })
-                    
-                except Exception as e:
-                    yield json.dumps({
-                        "type": "error",
-                        "request_id": request_id,
-                        "message": f"Error in {eval_name} evaluation for {model_name}: {str(e)}",
-                        "eval_name": eval_name,
-                        "model_name": model_name,
-                        "timestamp": datetime.now().isoformat()
-                    }) + "\n"
-        
-        # Create summary table
-        if merge_metrics:
-            merge_metrics_df = pd.DataFrame(merge_metrics).pivot(
-                index=["model_name"], columns="eval_name"
-            )
-            
-            # Fix for JSON serialization - convert to regular nested dict
-            summary_dict = {}
-            for model in merge_metrics_df.index:
-                summary_dict[model] = {}
-                for column in merge_metrics_df.columns:
-                    summary_dict[model][column] = merge_metrics_df.loc[model, column]
-            
-            summary_data = {
-                "type": "summary",
-                "request_id": request_id,
-                "table": summary_dict,
-                "markdown": merge_metrics_df.to_markdown(),
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            if request.save_results:
-                summary_filename = os.path.join(results_dir, "summary.json")
-                with open(summary_filename, "w") as f:
-                    json.dump(summary_data, f, indent=2)
-                summary_data["summary_path"] = summary_filename
-            
-            yield json.dumps(summary_data) + "\n"
-        
-        yield json.dumps({
-            "type": "complete",
-            "request_id": request_id,
-            "message": "All evaluations completed",
-            "timestamp": datetime.now().isoformat()
-        }) + "\n"
-    
-    except Exception as e:
-        yield json.dumps({
-            "type": "error",
-            "request_id": request_id,
-            "message": f"Evaluation process error: {str(e)}",
-            "timestamp": datetime.now().isoformat()
-        }) + "\n"
-    
-    finally:
-        # Update status to completed
-        if request_id in active_evaluations:
-            active_evaluations[request_id]["status"] = "completed"
-            active_evaluations[request_id]["end_time"] = datetime.now().isoformat()
-            
-            # Schedule cleanup of status after some time
-            async def cleanup_status():
-                await asyncio.sleep(3600)  # Keep status for 1 hour after completion
-                if request_id in active_evaluations:
-                    del active_evaluations[request_id]
-            
-            asyncio.create_task(cleanup_status())
+        result = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=False,  # Show output in real-time
+            text=True,
+            check=True
+        )
 
-@app.post("/evaluations/run")
-async def run_model_evaluations(request: EvaluationRequest = Body(...)):
-    """
-    Run evaluations on specified models and return streaming results
-    """
-    # Validate models
-    invalid_models = [model for model in request.models if model not in AVAILABLE_MODELS]
-    if invalid_models:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid model(s): {', '.join(invalid_models)}. Available models: {', '.join(AVAILABLE_MODELS.keys())}"
-        )
-    
-    # Validate evaluations
-    invalid_evals = [eval_name for eval_name in request.evaluations if eval_name not in AVAILABLE_EVALUATIONS]
-    if invalid_evals:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid evaluation(s): {', '.join(invalid_evals)}. Available evaluations: {', '.join(AVAILABLE_EVALUATIONS)}"
-        )
-    
-    # Generate a unique request ID
-    request_id = generate_request_id(request.dict())
-    
-    # Return a streaming response - directly connecting to the generator
-    return StreamingResponse(
-        run_evaluations(request, request_id),
-        media_type="application/x-ndjson",
-        headers={"X-Request-ID": request_id}
+        duration = time.time() - start_time
+        print(f"\n✅ {description} completed successfully in {duration:.1f}s")
+        return True
+
+    except subprocess.CalledProcessError as e:
+        duration = time.time() - start_time
+        print(f"\n❌ {description} failed after {duration:.1f}s")
+        print(f"Exit code: {e.returncode}")
+        return False
+    except Exception as e:
+        duration = time.time() - start_time
+        print(f"\n💥 {description} crashed after {duration:.1f}s: {e}")
+        return False
+
+
+def find_latest_run_directory(output_dir: str = "results") -> Path:
+    """Find the most recently created run directory"""
+    results_path = Path(output_dir)
+
+    if not results_path.exists():
+        raise FileNotFoundError(f"Results directory not found: {output_dir}")
+
+    run_dirs = [d for d in results_path.iterdir() if d.is_dir() and d.name.startswith("run_")]
+
+    if not run_dirs:
+        raise FileNotFoundError(f"No run directories found in {output_dir}")
+
+    # Sort by creation time (most recent first)
+    latest_run = max(run_dirs, key=lambda d: d.stat().st_ctime)
+    return latest_run
+
+
+def generate_forensic_pipeline(run_dir: Path, provider: str = "customgpt") -> bool:
+    """Run the complete forensic analysis pipeline"""
+    print(f"\n🔬 STARTING FORENSIC ANALYSIS PIPELINE")
+    print(f"Run directory: {run_dir}")
+    print(f"Provider: {provider}")
+    print("=" * 80)
+
+    # Step 1: Penalty deep dive analysis
+    step1_success = run_command([
+        "python", "scripts/customgpt_penalty_deep_dive.py",
+        "--run-dir", str(run_dir)
+    ], f"Step 1: {provider.upper()} penalty deep dive analysis")
+
+    if not step1_success:
+        print(f"⚠️  Step 1 failed, but continuing with forensic pipeline...")
+
+    # Step 2: GPT-5 failure analysis
+    step2_success = run_command([
+        "python", "scripts/gpt5_failure_analysis.py",
+        "--run-dir", str(run_dir)
+    ], "Step 2: GPT-5 deep failure analysis")
+
+    if not step2_success:
+        print(f"⚠️  Step 2 failed, but continuing with forensic pipeline...")
+
+    # Step 3: Engineering report generation
+    step3_success = run_command([
+        "python", "scripts/comprehensive_engineering_report.py",
+        "--run-dir", str(run_dir)
+    ], "Step 3: Engineering post-mortem report generation")
+
+    if not step3_success:
+        print(f"⚠️  Step 3 failed, but continuing with forensic pipeline...")
+
+    # Step 4: HTML forensic dashboard generation
+    step4_success = run_command([
+        "python", "scripts/generate_forensic_reports.py",
+        "--run-dir", str(run_dir),
+        "--provider", provider
+    ], "Step 4: HTML forensic dashboard generation")
+
+    # Report results
+    successful_steps = sum([step1_success, step2_success, step3_success, step4_success])
+
+    print(f"\n📊 FORENSIC PIPELINE SUMMARY:")
+    print(f"   ✅ Successful steps: {successful_steps}/4")
+    print(f"   📁 Run directory: {run_dir}")
+
+    if step4_success:
+        dashboard_file = run_dir / "forensic_dashboard.html"
+        print(f"   🌐 Forensic dashboard: {dashboard_file}")
+        print(f"   🚀 To view: python -m http.server 8000 (navigate to {dashboard_file.relative_to(Path.cwd())})")
+
+    return successful_steps >= 2  # At least half the steps should succeed
+
+
+def main():
+    """Main benchmark runner with automatic forensic analysis"""
+    parser = argparse.ArgumentParser(
+        description="Complete RAG Benchmark with Automatic Forensic Analysis",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py --debug                     # Quick 10-question debug run
+  python main.py --examples 200              # Full 200-question evaluation
+  python main.py --examples 50 --max-workers 4  # Custom configuration
+        """
     )
 
-@app.get("/status/{request_id}")
-async def get_status(request_id: str):
-    """Check the status of a specific evaluation"""
-    if request_id in active_evaluations:
-        return active_evaluations[request_id]
+    # Benchmark arguments
+    parser.add_argument("--examples", type=int, help="Number of examples per provider (default: debug=10, normal=200)")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode with verbose output")
+    parser.add_argument("--max-workers", type=int, default=8, help="Maximum number of parallel workers")
+    parser.add_argument("--output-dir", default="results", help="Output directory for results")
+    parser.add_argument("--flex-tier", action="store_true", help="Use GPT-5 Flex tier (slower but cheaper)")
+
+    # Pipeline control
+    parser.add_argument("--skip-benchmark", action="store_true", help="Skip benchmark, only run forensics on latest run")
+    parser.add_argument("--skip-forensics", action="store_true", help="Skip forensic analysis, only run benchmark")
+    parser.add_argument("--provider", default="customgpt", help="Provider to analyze for forensics")
+
+    args = parser.parse_args()
+
+    print("🏆 RAG BENCHMARK WITH AUTOMATIC FORENSIC ANALYSIS")
+    print("=" * 70)
+    print("Complete pipeline: Benchmark → Analysis → Forensics → HTML Reports")
+    print("=" * 70)
+
+    # Determine number of examples
+    if args.examples is None:
+        examples = 10 if args.debug else 200
     else:
-        return {"status": "not found", "request_id": request_id}
+        examples = args.examples
 
-@app.get("/models")
-async def list_models():
-    """List all available models for evaluation"""
-    return {"models": list(AVAILABLE_MODELS.keys())}
+    print(f"📊 Configuration:")
+    print(f"   Examples per provider: {examples}")
+    print(f"   Debug mode: {args.debug}")
+    print(f"   Max workers: {args.max_workers}")
+    print(f"   Output directory: {args.output_dir}")
+    print(f"   Flex tier: {args.flex_tier}")
+    print(f"   Skip benchmark: {args.skip_benchmark}")
+    print(f"   Skip forensics: {args.skip_forensics}")
 
-@app.get("/evaluations")
-async def list_evaluations():
-    """List all available evaluation types"""
-    return {"evaluations": AVAILABLE_EVALUATIONS}
+    overall_start = time.time()
 
-@app.get("/active-evaluations")
-async def list_active_evaluations():
-    """List all active evaluations"""
-    return {"active_evaluations": active_evaluations}
+    # Phase 1: Run Benchmark (unless skipped)
+    if not args.skip_benchmark:
+        print(f"\n🎯 PHASE 1: RUNNING CONFIDENCE THRESHOLD BENCHMARK")
+        print("=" * 70)
+
+        benchmark_cmd = [
+            "python", "scripts/confidence_threshold_benchmark.py",
+            "--examples", str(examples),
+            "--max-workers", str(args.max_workers),
+            "--output-dir", args.output_dir
+        ]
+
+        if args.debug:
+            benchmark_cmd.append("--debug")
+
+        if args.flex_tier:
+            benchmark_cmd.append("--flex-tier")
+
+        benchmark_success = run_command(
+            benchmark_cmd,
+            f"Running RAG benchmark with {examples} examples per provider"
+        )
+
+        if not benchmark_success:
+            print("❌ Benchmark failed! Cannot proceed with forensic analysis.")
+            return 1
+    else:
+        print(f"\n⏭️  PHASE 1: SKIPPED (benchmark disabled)")
+        benchmark_success = True
+
+    # Find the run directory
+    if not args.skip_forensics:
+        print(f"\n🔍 FINDING LATEST RUN DIRECTORY")
+        print("-" * 40)
+
+        try:
+            run_dir = find_latest_run_directory(args.output_dir)
+            print(f"   📁 Latest run: {run_dir}")
+        except FileNotFoundError as e:
+            print(f"   ❌ {e}")
+            return 1
+
+        # Phase 2: Run Forensic Analysis Pipeline
+        print(f"\n🔬 PHASE 2: FORENSIC ANALYSIS PIPELINE")
+        print("=" * 70)
+
+        forensics_success = generate_forensic_pipeline(run_dir, args.provider)
+
+        if not forensics_success:
+            print("⚠️  Forensic analysis had issues, but basic results should be available.")
+    else:
+        print(f"\n⏭️  PHASE 2: SKIPPED (forensics disabled)")
+        forensics_success = True
+        run_dir = find_latest_run_directory(args.output_dir) if not args.skip_benchmark else None
+
+    # Final Summary
+    overall_duration = time.time() - overall_start
+
+    print(f"\n🎉 COMPLETE PIPELINE FINISHED")
+    print("=" * 70)
+    print(f"   ⏱️  Total duration: {overall_duration/60:.1f} minutes")
+    print(f"   📊 Benchmark: {'✅' if benchmark_success else '❌' if not args.skip_benchmark else '⏭️'}")
+    print(f"   🔬 Forensics: {'✅' if forensics_success else '❌' if not args.skip_forensics else '⏭️'}")
+
+    if run_dir and not args.skip_forensics:
+        print(f"\n📁 RESULTS LOCATION:")
+        print(f"   Directory: {run_dir}")
+
+        # Check what files were generated
+        quality_report = list(run_dir.glob("quality_benchmark_report_*.html"))
+        forensic_dashboard = run_dir / "forensic_dashboard.html"
+        engineering_report = run_dir / f"{args.provider}_engineering_report.html"
+
+        print(f"\n📋 GENERATED REPORTS:")
+        if quality_report:
+            print(f"   📊 Quality benchmark: {quality_report[0]}")
+        if forensic_dashboard.exists():
+            print(f"   🔍 Forensic dashboard: {forensic_dashboard}")
+        if engineering_report.exists():
+            print(f"   📝 Engineering report: {engineering_report}")
+
+        print(f"\n🌐 TO VIEW RESULTS:")
+        print(f"   1. cd {run_dir.parent}")
+        print(f"   2. python -m http.server 8000")
+        print(f"   3. Open http://localhost:8000/{run_dir.name}/")
+
+        if forensic_dashboard.exists():
+            print(f"   4. Navigate to forensic_dashboard.html for complete analysis")
+
+    return 0 if (benchmark_success or args.skip_benchmark) and (forensics_success or args.skip_forensics) else 1
+
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n\n⚠️  Pipeline interrupted by user (Ctrl+C)")
+        sys.exit(130)
+    except Exception as e:
+        print(f"\n\n💥 Pipeline crashed with unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

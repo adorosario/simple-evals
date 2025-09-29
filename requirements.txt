@@ -33,3 +33,6 @@ numpy>=1.24.0
 # Visualization and plotting
 matplotlib>=3.7.0
 seaborn>=0.12.0
+
+# Markdown processing for forensic reports
+markdown>=3.4.0
