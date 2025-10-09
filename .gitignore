@@ -179,3 +179,4 @@ rag_benchmark_results_*/
 
 # Build artifacts
 build-rag/
+customgpt_penalty_analysis/
