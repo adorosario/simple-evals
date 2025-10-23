@@ -2,6 +2,7 @@
 Audited CustomGPT Sampler with comprehensive logging
 """
 
+import json
 import os
 import time
 import uuid
@@ -53,6 +54,11 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
         self._current_url = None
         self._current_external_id = None
         self._last_response_headers = {}
+
+        # Store additional response data for debugging and citations
+        self._last_prompt_id = None
+        self._last_message_id = None  # alias for prompt_id
+        self._last_citations = []
 
     def _pack_message(self, role: str, content: str):
         return {"role": str(role), "content": content}
@@ -134,7 +140,30 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
 
                     if response.status_code == 200:
                         try:
-                            return response.json()['data']["openai_response"]
+                            # Parse API response
+                            full_response = response.json()
+                            data_obj = full_response.get('data', {})
+
+                            # Extract text response
+                            text_response = data_obj.get("openai_response", "")
+
+                            # Extract prompt_id/message_id (confirmed field: 'id')
+                            prompt_id = data_obj.get('id')
+                            self._last_prompt_id = prompt_id
+                            self._last_message_id = prompt_id  # Alias
+
+                            # Extract citations (can be null or array)
+                            # Use explicit None check instead of truthiness to preserve null vs empty array
+                            citations = data_obj.get('citations')
+                            if citations is None:
+                                citations = []
+                            self._last_citations = citations
+
+                            # Log extraction summary
+                            print(f"✅ CustomGPT API Response: prompt_id={prompt_id}, citations={len(citations)}")
+
+                            return text_response
+
                         except (KeyError, ValueError) as e:
                             print(f"Invalid JSON response structure: {e}")
                             if attempt == max_retries - 1:
@@ -235,10 +264,20 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
             "uses_rag": True,
             "project_id": self.project_id,
             "session_id": self._current_session_id,
+            "conversation_id": self._current_session_id,  # Alias for session_id
+            "prompt_id": self._last_prompt_id,
+            "message_id": self._last_message_id,  # Alias for prompt_id
+            "citations": self._last_citations,
+            "citation_count": len(self._last_citations) if self._last_citations else 0,
             "api_endpoint": "customgpt.ai/api/v1/conversations/messages",
             "actual_url": self._current_url,
             "external_id": self._current_external_id,
-            "response_headers": self._last_response_headers
+            "response_headers": self._last_response_headers,
+            # Debug URLs for server-side investigation
+            "debug_urls": {
+                "message_endpoint": f"https://app.customgpt.ai/api/v1/projects/{self.project_id}/conversations/{self._current_session_id}/messages/{self._last_prompt_id}" if self._last_prompt_id else None,
+                "conversation_endpoint": f"https://app.customgpt.ai/api/v1/projects/{self.project_id}/conversations/{self._current_session_id}" if self._current_session_id else None,
+            }
         }
 
     @classmethod

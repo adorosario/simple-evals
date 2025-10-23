@@ -800,9 +800,13 @@ class CustomGPTPenaltyAnalyzer:
                     'domain': case.question_domain,
                     'complexity': case.question_complexity,
                     'judge_reasoning': case.judge_reasoning,
+                    'judge_confidence': case.judge_confidence,  # NEW: Include judge confidence
                     'openai_rag_grade': case.openai_rag_grade,
                     'openai_vanilla_grade': case.openai_vanilla_grade,
-                    'abstention_recommendation': case.abstention_judge_recommendation
+                    'openai_rag_answer': case.openai_rag_answer,  # NEW: Include competitor answers
+                    'openai_vanilla_answer': case.openai_vanilla_answer,  # NEW
+                    'abstention_recommendation': case.abstention_judge_recommendation,
+                    'abstention_judge_confidence': case.abstention_judge_confidence  # NEW
                 }
                 for case in penalty_cases
             ],
@@ -867,12 +871,18 @@ class CustomGPTPenaltyAnalyzer:
 def main():
     parser = argparse.ArgumentParser(description='CustomGPT Penalty Deep-Dive Analysis')
     parser.add_argument('--run-dir', required=True, help='Path to evaluation run directory')
-    parser.add_argument('--output-dir', default='customgpt_penalty_analysis', help='Output directory')
+    parser.add_argument('--output-dir', default=None, help='Output directory (default: {run_dir}/customgpt_penalty_analysis)')
 
     args = parser.parse_args()
 
+    # Default output to run directory to keep data self-contained
+    if args.output_dir is None:
+        output_dir = Path(args.run_dir) / 'customgpt_penalty_analysis'
+    else:
+        output_dir = Path(args.output_dir)
+
     # Initialize analyzer
-    analyzer = CustomGPTPenaltyAnalyzer(args.run_dir, args.output_dir)
+    analyzer = CustomGPTPenaltyAnalyzer(args.run_dir, str(output_dir))
 
     # Run comprehensive analysis
     results = analyzer.run_comprehensive_analysis()
