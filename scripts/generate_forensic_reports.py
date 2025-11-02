@@ -7,15 +7,63 @@ This script generates:
 1. Main forensic dashboard with links to all reports
 2. Individual HTML reports for each failed question
 3. HTML conversion of engineering report
+
+Uses the unified brand kit for consistent, Apple-inspired design.
 """
 
 import json
 import argparse
+import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import markdown
 import re
+
+# Add parent directory to path for brand kit import
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from brand_kit import (
+    get_html_head,
+    get_navigation_bar,
+    get_page_header,
+    format_timestamp,
+    wrap_html_document
+)
+
+
+def _scan_available_reports(results_dir: str) -> dict:
+    """
+    Scan results directory for available reports.
+
+    Returns:
+        Dictionary mapping report types to file paths (relative to results_dir)
+    """
+    reports = {
+        'quality_benchmark': None,
+        'statistical_analysis': None,
+        'forensics': {}
+    }
+
+    results_path = Path(results_dir)
+
+    # Find quality benchmark report
+    for file in results_path.glob("quality_benchmark_report_*.html"):
+        reports['quality_benchmark'] = file.name
+        break
+
+    # Find statistical analysis report
+    for file in results_path.glob("statistical_analysis_run_*.html"):
+        reports['statistical_analysis'] = file.name
+        break
+
+    # Find forensic dashboards
+    for forensic_dir in results_path.glob("*_forensics"):
+        provider = forensic_dir.name.replace("_forensics", "")
+        dashboard = forensic_dir / "forensic_dashboard.html"
+        if dashboard.exists():
+            reports['forensics'][provider] = f"{forensic_dir.name}/forensic_dashboard.html"
+
+    return reports
 
 
 def get_confidence_display_properties(confidence: float) -> dict:
@@ -195,74 +243,37 @@ def load_all_data(run_dir: str, provider: str = "customgpt") -> Dict[str, Any]:
         'run_id': run_id
     }
 
-def get_html_template() -> str:
-    """Get the base HTML template with Bootstrap styling"""
+def get_datatable_script() -> str:
+    """Get the DataTable initialization script"""
     return """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-
-    <!-- External Dependencies -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-
-    <!-- JavaScript Dependencies -->
-    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-
-    <style>
-        .question-card {{ border-left: 4px solid #dc3545; }}
-        .metric-card {{ border-left: 4px solid #0d6efd; }}
-        .analysis-section {{ background-color: #f8f9fa; border-radius: 8px; padding: 20px; margin: 15px 0; }}
-        .grade-badge {{ font-size: 1.1em; }}
-        .confidence-bar {{ height: 20px; border-radius: 10px; }}
-        pre {{ background-color: #f8f9fa; padding: 15px; border-radius: 5px; font-size: 0.9em; }}
-        .forensic-nav {{ background-color: #212529; }}
-        .forensic-nav .nav-link {{ color: #adb5bd; }}
-        .forensic-nav .nav-link:hover {{ color: #fff; }}
-        .forensic-nav .nav-link.active {{ color: #fff; background-color: #495057; }}
-    </style>
-</head>
-<body>
-    {content}
-
     <script>
-        $(document).ready(function() {{
-            $('.table').DataTable({{
+        $(document).ready(function() {
+            $('.table').DataTable({
                 pageLength: 25,
                 order: [[0, 'asc']],
-                responsive: true
-            }});
-        }});
+                responsive: true,
+                language: {
+                    search: "Search:",
+                    lengthMenu: "Show _MENU_ entries"
+                }
+            });
+        });
     </script>
-</body>
-</html>
 """
 
 def generate_forensic_dashboard(data: Dict[str, Any], output_file: str, run_dir: str, provider: str = "customgpt") -> str:
-    """Generate the main forensic dashboard"""
+    """Generate the main forensic dashboard using unified brand kit"""
     penalty_cases = data['penalty_analysis']['penalty_cases']
     run_id = data['run_id']
+    provider_display = provider.replace('_', ' ').title()
 
-    # Dynamically find quality benchmark report
-    quality_report_file = None
-    quality_report_link = ""
-    run_path = Path(run_dir)
-    for html_file in run_path.glob("quality_benchmark_report_*.html"):
-        quality_report_file = html_file.name
-        quality_report_link = f'<li class="list-group-item"><a href="{quality_report_file}" class="text-decoration-none"><i class="fas fa-chart-bar"></i> Quality Benchmark Report</a></li>'
-        break
+    # Scan for available reports (we're in a subdirectory, so need to go up one level)
+    available_reports = _scan_available_reports(run_dir)
 
     # Calculate summary statistics
     total_failures = len(penalty_cases)
     total_penalty_points = sum(case['penalty_points'] for case in penalty_cases)
-    avg_confidence = sum(case['customgpt_confidence'] for case in penalty_cases) / len(penalty_cases)
+    avg_confidence = sum(case['customgpt_confidence'] for case in penalty_cases) / len(penalty_cases) if penalty_cases else 0
 
     # Domain breakdown
     domain_counts = {}
@@ -274,62 +285,55 @@ def generate_forensic_dashboard(data: Dict[str, Any], output_file: str, run_dir:
     openai_rag_success = sum(1 for case in penalty_cases if case['openai_rag_grade'] == 'A')
     openai_vanilla_success = sum(1 for case in penalty_cases if case['openai_vanilla_grade'] == 'A')
 
-    content = f"""
-    <nav class="navbar navbar-expand-lg forensic-nav">
-        <div class="container-fluid">
-            <a class="navbar-brand text-white" href="#">
-                <i class="fas fa-microscope"></i> {provider.upper()} Forensic Analysis
-            </a>
-            <span class="navbar-text text-light">Run ID: {run_id}</span>
-        </div>
-    </nav>
+    # Start HTML with brand kit
+    html = get_html_head(
+        title=f"Why RAGs Hallucinate - {provider_display} Forensics",
+        description=f"Forensic analysis of {provider_display} penalty cases with detailed failure investigation"
+    )
 
-    <div class="container-fluid mt-4">
-        <div class="row">
-            <div class="col-12">
-                <h1 class="mb-4">
-                    <i class="fas fa-exclamation-triangle text-danger"></i>
-                    {provider.upper()} Penalty Case Forensic Analysis
-                </h1>
-                <p class="lead">Complete forensic investigation of all {total_failures} penalty cases from evaluation run {run_id}</p>
-            </div>
-        </div>
+    html += f"""
+<body>
+    {get_navigation_bar(
+        active_page='forensic',
+        run_id=run_id,
+        base_path="../",
+        quality_report=available_reports.get('quality_benchmark'),
+        statistical_report=available_reports.get('statistical_analysis'),
+        forensic_reports=available_reports.get('forensics', {})
+    )}
 
-        <!-- Executive Summary -->
-        <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="card metric-card">
-                    <div class="card-body text-center">
-                        <h2 class="text-danger">{total_failures}</h2>
-                        <p class="card-text">Total Failures</p>
-                    </div>
+    <div class="main-container">
+        {get_page_header(
+            title=f"{provider_display} Forensic Analysis",
+            subtitle="Deep-dive investigation of all penalty cases",
+            meta_info=f"Run ID: <code>{run_id}</code> | Generated: {format_timestamp()}"
+        )}
+
+        <!-- Content Section -->
+        <div class="content-section">
+            <!-- Executive Summary -->
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <h3><i class="fas fa-exclamation-triangle me-2"></i>Total Failures</h3>
+                    <div class="value" style="color: var(--danger);">{total_failures}</div>
+                    <div class="description">Wrong answers requiring investigation</div>
+                </div>
+                <div class="metric-card">
+                    <h3><i class="fas fa-calculator me-2"></i>Penalty Points</h3>
+                    <div class="value" style="color: var(--danger);">{total_penalty_points:.1f}</div>
+                    <div class="description">Total penalty impact (4 points each)</div>
+                </div>
+                <div class="metric-card">
+                    <h3><i class="fas fa-chart-line me-2"></i>Avg Confidence</h3>
+                    <div class="value" style="color: var(--warning);">{avg_confidence:.3f}</div>
+                    <div class="description">{provider_display} confidence in wrong answers</div>
+                </div>
+                <div class="metric-card">
+                    <h3><i class="fas fa-users me-2"></i>Competitor Successes</h3>
+                    <div class="value" style="color: var(--info);">{openai_rag_success + openai_vanilla_success}/{total_failures * 2}</div>
+                    <div class="description">Times competitors got it right</div>
                 </div>
             </div>
-            <div class="col-md-3">
-                <div class="card metric-card">
-                    <div class="card-body text-center">
-                        <h2 class="text-danger">{total_penalty_points:.1f}</h2>
-                        <p class="card-text">Penalty Points</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card metric-card">
-                    <div class="card-body text-center">
-                        <h2 class="text-warning">{avg_confidence:.3f}</h2>
-                        <p class="card-text">Avg Confidence</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card metric-card">
-                    <div class="card-body text-center">
-                        <h2 class="text-info">{openai_rag_success + openai_vanilla_success}/{total_failures * 2}</h2>
-                        <p class="card-text">Competitor Successes</p>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         <!-- Quick Navigation to Individual Reports -->
         <div class="row mb-4">
@@ -515,39 +519,49 @@ def generate_forensic_dashboard(data: Dict[str, Any], output_file: str, run_dir:
                                 </tr>
 """
 
-    content += """
+    html += """
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
+
+            <!-- Footer -->
+            <hr class="mt-5">
+            <div class="text-center text-muted mb-4">
+                <p>
+                    <strong>""" + provider_display + """ Forensic Analysis</strong> |
+                    Generated: """ + format_timestamp() + """ | Run ID: <code>""" + run_id + """</code>
+                </p>
+            </div>
         </div>
     </div>
 
-    <footer class="bg-dark text-light text-center py-3 mt-5">
-        <p>&copy; 2025 {provider.upper()} Forensic Analysis - Generated on """ + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + """</p>
-    </footer>
-"""
-
-    # Generate the full HTML
-    html_content = get_html_template().format(
-        title=f"{provider.upper()} Forensic Dashboard - Penalty Case Analysis",
-        content=content
-    )
+    <!-- DataTables Script -->
+    """ + get_datatable_script() + """
+</body>
+</html>"""
 
     # Save the file
     with open(output_file, 'w') as f:
-        f.write(html_content)
+        f.write(html)
 
     return output_file
 
 def generate_individual_question_report(question_data: Dict, gpt5_analysis: Dict, output_file: str, audit_log_path: Optional[Path] = None) -> str:
-    """Generate detailed forensic report for a single question"""
+    """Generate detailed forensic report for a single question using brand kit"""
     question_id = question_data['question_id']
+
+    # Infer run_dir from output_file path (go up one level from the forensics subdirectory)
+    output_path = Path(output_file)
+    run_dir = str(output_path.parent.parent)
+
+    # Scan for available reports
+    available_reports = _scan_available_reports(run_dir)
 
     # Extract GPT-5 analysis for this question
     gpt5_content = None
-    for analysis in gpt5_analysis['failure_analyses']:
+    for analysis in gpt5_analysis.get('failure_analyses', []):
         if analysis['question_id'] == question_id:
             gpt5_content = analysis['analysis']
             break
@@ -567,26 +581,34 @@ def generate_individual_question_report(question_data: Dict, gpt5_analysis: Dict
     if audit_log_path:
         customgpt_meta = extract_customgpt_metadata(audit_log_path, question_id)
 
-    content = f"""
-    <nav class="navbar navbar-expand-lg forensic-nav">
-        <div class="container-fluid">
-            <a class="navbar-brand text-white" href="forensic_dashboard.html">
-                <i class="fas fa-arrow-left"></i> Back to Dashboard
-            </a>
-            <span class="navbar-text text-light">Question: {question_id}</span>
-        </div>
-    </nav>
+    # Get run ID from question data if available
+    run_id = question_data.get('run_id', 'unknown')
 
-    <div class="container-fluid mt-4">
-        <div class="row">
-            <div class="col-12">
-                <h1 class="mb-4">
-                    <i class="fas fa-microscope text-danger"></i>
-                    Forensic Analysis: {question_id}
-                </h1>
-                <p class="lead">Complete forensic investigation of penalty case {question_id}</p>
-            </div>
-        </div>
+    # Start HTML with brand kit
+    html = get_html_head(
+        title=f"Forensic Analysis - {question_id}",
+        description=f"Detailed forensic investigation of penalty case {question_id}"
+    )
+
+    html += f"""
+<body>
+    {get_navigation_bar(
+        active_page='forensic',
+        run_id=run_id,
+        base_path="../",
+        quality_report=available_reports.get('quality_benchmark'),
+        statistical_report=available_reports.get('statistical_analysis'),
+        forensic_reports=available_reports.get('forensics', {})
+    )}
+
+    <div class="main-container">
+        {get_page_header(
+            title=f"Forensic Analysis: {question_id}",
+            subtitle="Complete penalty case investigation with competitive analysis",
+            meta_info=f"Generated: {format_timestamp()}"
+        )}
+
+        <div class="content-section">
 
         <!-- Question Details -->
         <div class="row mb-4">
@@ -901,39 +923,40 @@ def generate_individual_question_report(question_data: Dict, gpt5_analysis: Dict
             </div>
         </div>
 
-        <!-- Navigation -->
-        <div class="row">
-            <div class="col-12 text-center">
-                <a href="forensic_dashboard.html" class="btn btn-primary">
-                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+            <!-- Navigation -->
+            <div class="text-center mt-4">
+                <a href="forensic_dashboard.html" class="btn btn-primary me-2">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Forensic Dashboard
                 </a>
-                <a href="#top" class="btn btn-secondary">
-                    <i class="fas fa-arrow-up"></i> Back to Top
+                <a href="../index.html" class="btn btn-outline-secondary">
+                    <i class="fas fa-home me-1"></i>Main Dashboard
                 </a>
+            </div>
+
+            <!-- Footer -->
+            <hr class="mt-5">
+            <div class="text-center text-muted mb-4">
+                <p>Generated: """ + format_timestamp() + f""" | Question: <code>{question_id}</code></p>
             </div>
         </div>
     </div>
-
-    <footer class="bg-dark text-light text-center py-3 mt-5">
-        <p>&copy; 2025 CustomGPT Forensic Analysis - Question {question_id} - Generated on """ + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + """</p>
-    </footer>
-"""
-
-    # Generate the full HTML
-    html_content = get_html_template().format(
-        title=f"Forensic Analysis - {question_id}",
-        content=content
-    )
+</body>
+</html>"""
 
     # Save the file
     with open(output_file, 'w') as f:
-        f.write(html_content)
+        f.write(html)
 
     return output_file
 
 def convert_engineering_report_to_html(run_dir: str, output_file: str, provider: str = "customgpt") -> str:
-    """Convert the markdown engineering report to HTML"""
+    """Convert the markdown engineering report to HTML using brand kit"""
     md_file = Path(run_dir) / f"{provider}_engineering_report_{Path(run_dir).name}.md"
+    provider_display = provider.replace('_', ' ').title()
+    run_id = Path(run_dir).name
+
+    # Scan for available reports
+    available_reports = _scan_available_reports(run_dir)
 
     with open(md_file, 'r') as f:
         md_content = f.read()
@@ -941,38 +964,61 @@ def convert_engineering_report_to_html(run_dir: str, output_file: str, provider:
     # Convert markdown to HTML
     html_body = markdown.markdown(md_content, extensions=['tables', 'fenced_code'])
 
-    content = f"""
-    <nav class="navbar navbar-expand-lg forensic-nav">
-        <div class="container-fluid">
-            <a class="navbar-brand text-white" href="forensic_dashboard.html">
-                <i class="fas fa-arrow-left"></i> Back to Dashboard
-            </a>
-            <span class="navbar-text text-light">Engineering Report</span>
-        </div>
-    </nav>
+    # Start HTML with brand kit
+    html = get_html_head(
+        title=f"{provider_display} Engineering Post-Mortem Report",
+        description=f"Engineering analysis and post-mortem for {provider_display} penalty cases"
+    )
 
-    <div class="container mt-4">
-        <div class="card">
-            <div class="card-body">
+    html += f"""
+<body>
+    {get_navigation_bar(
+        active_page='forensic',
+        run_id=run_id,
+        base_path="../",
+        quality_report=available_reports.get('quality_benchmark'),
+        statistical_report=available_reports.get('statistical_analysis'),
+        forensic_reports=available_reports.get('forensics', {})
+    )}
+
+    <div class="main-container">
+        {get_page_header(
+            title=f"{provider_display} Engineering Post-Mortem",
+            subtitle="Technical analysis and recommendations for penalty case failures",
+            meta_info=f"Generated: {format_timestamp()} | Run ID: <code>{run_id}</code>"
+        )}
+
+        <div class="content-section">
+            <div class="info-box">
                 {html_body}
+            </div>
+
+            <!-- Navigation -->
+            <div class="text-center mt-4">
+                <a href="forensic_dashboard.html" class="btn btn-primary me-2">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Forensic Dashboard
+                </a>
+                <a href="../index.html" class="btn btn-outline-secondary">
+                    <i class="fas fa-home me-1"></i>Main Dashboard
+                </a>
+            </div>
+
+            <!-- Footer -->
+            <hr class="mt-5">
+            <div class="text-center text-muted mb-4">
+                <p>
+                    <strong>{provider_display} Engineering Report</strong> |
+                    Generated: {format_timestamp()}
+                </p>
             </div>
         </div>
     </div>
-
-    <footer class="bg-dark text-light text-center py-3 mt-5">
-        <p>&copy; 2025 {provider.upper()} Engineering Report - Generated on """ + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + """</p>
-    </footer>
-"""
-
-    # Generate the full HTML
-    html_content = get_html_template().format(
-        title=f"{provider.upper()} Engineering Post-Mortem Report",
-        content=content
-    )
+</body>
+</html>"""
 
     # Save the file
     with open(output_file, 'w') as f:
-        f.write(html_content)
+        f.write(html)
 
     return output_file
 

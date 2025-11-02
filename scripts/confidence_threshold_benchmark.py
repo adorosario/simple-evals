@@ -25,6 +25,13 @@ from confidence_threshold_simpleqa_eval import ConfidenceThresholdSimpleQAEval, 
 from audit_logger import AuditLogger, create_run_id
 from leaderboard_generator import LeaderboardGenerator
 
+# Brand kit report generators
+from scripts.report_generators import (
+    generate_quality_benchmark_report_v2,
+    generate_statistical_analysis_report_v2
+)
+from scripts.generate_main_dashboard import generate_main_dashboard
+
 
 def setup_samplers(audit_logger=None):
     """Initialize all providers for comparison with audit logging"""
@@ -957,12 +964,24 @@ def main():
         "use_flex_tier": use_flex_tier
     }
 
-    report_file = generate_quality_benchmark_report(
+    report_file = generate_quality_benchmark_report_v2(
         results,
         str(audit_logger.run_dir),
         run_metadata
     )
     print(f"   Quality benchmark report saved: {report_file}")
+
+    # Generate statistical analysis HTML report (if we have statistical data)
+    if statistical_analysis and statistical_analysis.get("summary", {}).get("total_statistical_tests", 0) > 0:
+        try:
+            stat_report_file = generate_statistical_analysis_report_v2(
+                str(audit_logger.run_dir),
+                run_id,
+                statistical_analysis
+            )
+            print(f"   Statistical analysis report saved: {stat_report_file}")
+        except Exception as e:
+            print(f"   ⚠️  Warning: Could not generate statistical analysis HTML: {e}")
 
     # Save JSON results
     json_file = audit_logger.run_dir / "quality_benchmark_results.json"
@@ -1003,10 +1022,87 @@ def main():
     print(f"   JSON results saved: {json_file}")
     print(f"\n📋 Complete audit trail available in: {audit_logger.run_dir}")
 
+    # Auto-generate forensic reports for providers with penalties
+    print(f"\n🔬 Generating forensic reports...")
+    forensic_count = 0
+
+    # Correct provider name mapping for penalty analyzer
+    provider_mapping = {
+        "CustomGPT_RAG": "customgpt",
+        "OpenAI_RAG": "openai_rag",
+        "OpenAI_Vanilla": "openai_vanilla"
+    }
+
+    for result in successful_results:
+        provider_name = result["sampler_name"]
+        wrong_count = result["metrics"].get("n_incorrect", 0)
+
+        if wrong_count > 0:
+            print(f"\n   Analyzing {provider_name} ({wrong_count} penalty cases)...")
+            provider_key = provider_mapping.get(provider_name, provider_name.lower())
+
+            try:
+                # Step 1: Run penalty analyzer
+                import subprocess
+                analyzer_cmd = [
+                    "python", "scripts/universal_penalty_analyzer.py",
+                    "--run-dir", str(audit_logger.run_dir),
+                    "--provider", provider_key
+                ]
+                analyzer_result = subprocess.run(analyzer_cmd, capture_output=True, text=True, check=True)
+                print(f"      ✓ Penalty analysis complete")
+
+                # Step 2: Generate forensic reports
+                forensic_cmd = [
+                    "python", "scripts/generate_universal_forensics.py",
+                    "--run-dir", str(audit_logger.run_dir),
+                    "--provider", provider_key
+                ]
+                forensic_result = subprocess.run(forensic_cmd, capture_output=True, text=True, check=True)
+                print(f"      ✓ Forensic reports generated")
+                forensic_count += 1
+
+            except subprocess.CalledProcessError as e:
+                print(f"      ⚠️  Warning: Forensic generation failed for {provider_name}")
+                print(f"      Error: {e.stderr if e.stderr else str(e)}")
+            except Exception as e:
+                print(f"      ⚠️  Warning: Unexpected error for {provider_name}: {e}")
+        else:
+            print(f"   ✓ {provider_name}: No penalties, skipping forensics")
+
+    if forensic_count > 0:
+        print(f"\n   ✅ Generated forensics for {forensic_count} provider(s)")
+    else:
+        print(f"\n   ℹ️  No forensic reports needed (no penalties)")
+
+    # Generate main dashboard hub
+    print(f"\n📊 Generating main dashboard hub...")
+    try:
+        dashboard_file = generate_main_dashboard(
+            results_dir=str(audit_logger.run_dir),
+            run_metadata={
+                "run_id": run_metadata.get("run_id", ""),
+                "timestamp": datetime.now(),
+                "providers": [r["sampler_name"] for r in results if r["success"]],
+                "total_questions": run_metadata.get("samples_per_provider", 5),
+                "confidence_threshold": 0.8  # Fixed threshold for display
+            }
+        )
+        print(f"   Main dashboard saved: {dashboard_file}")
+    except Exception as e:
+        print(f"   ⚠️  Warning: Failed to generate main dashboard: {e}")
+        print(f"   This is non-critical - other reports are still available")
+        import traceback
+        traceback.print_exc()  # Debug: show full traceback
+
     print(f"\n🎉 QUALITY BENCHMARK COMPLETE!")
-    print(f"Report: {report_file}")
-    print(f"Results: {json_file}")
-    print(f"Framework: Quality vs Volume Strategy using 80% Confidence Threshold")
+    print(f"📁 Results directory: {audit_logger.run_dir}")
+    print(f"🏠 Main dashboard: {audit_logger.run_dir}/index.html")
+    print(f"📊 Quality benchmark: {report_file}")
+    print(f"📄 JSON results: {json_file}")
+    if forensic_count > 0:
+        print(f"🔬 Forensic reports: {forensic_count} provider(s) analyzed")
+    print(f"\n💡 Open the main dashboard (index.html) in your browser to navigate all reports")
 
     return 0
 

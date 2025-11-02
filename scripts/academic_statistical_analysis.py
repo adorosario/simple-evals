@@ -11,10 +11,13 @@ Implements:
 
 Reference: Wilson, E. B. (1927). "Probable inference, the law of succession,
 and statistical inference". Journal of the American Statistical Association.
+
+Uses unified brand kit for consistent, Apple-inspired HTML reports.
 """
 
 import json
 import argparse
+import sys
 from pathlib import Path
 from typing import Dict, List, Tuple, Any, Optional
 from dataclasses import dataclass
@@ -22,6 +25,51 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import math
+
+# Add parent directory to path for brand kit import
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from brand_kit import (
+    get_html_head,
+    get_navigation_bar,
+    get_page_header,
+    format_timestamp
+)
+
+
+def _scan_available_reports(results_dir: str) -> dict:
+    """
+    Scan results directory for available reports.
+
+    Returns:
+        Dictionary mapping report types to file paths (relative to results_dir)
+    """
+    reports = {
+        'quality_benchmark': None,
+        'statistical_analysis': None,
+        'forensics': {}
+    }
+
+    results_path = Path(results_dir)
+
+    # Find quality benchmark report
+    for file in results_path.glob("quality_benchmark_report_*.html"):
+        reports['quality_benchmark'] = file.name
+        break
+
+    # Find statistical analysis report
+    for file in results_path.glob("statistical_analysis_run_*.html"):
+        reports['statistical_analysis'] = file.name
+        break
+
+    # Find forensic dashboards
+    for forensic_dir in results_path.glob("*_forensics"):
+        provider = forensic_dir.name.replace("_forensics", "")
+        dashboard = forensic_dir / "forensic_dashboard.html"
+        if dashboard.exists():
+            reports['forensics'][provider] = f"{forensic_dir.name}/forensic_dashboard.html"
+
+    return reports
+
 
 @dataclass
 class ProviderStatistics:
@@ -484,7 +532,7 @@ def generate_statistical_analysis_report(
     print(f"✓ Statistical analysis data saved: {json_file}")
 
     # Generate HTML version for easy viewing
-    html_content = markdown_to_html("\n".join(report))
+    html_content = markdown_to_html("\n".join(report), run_dir=str(run_dir), run_id=run_id)
     html_file = output_dir / f"statistical_analysis_{run_id}.html"
     with open(html_file, 'w') as f:
         f.write(html_content)
@@ -497,10 +545,13 @@ def generate_statistical_analysis_report(
     return str(md_file)
 
 
-def markdown_to_html(markdown_text: str) -> str:
+def markdown_to_html(markdown_text: str, run_dir: str = "", run_id: str = "unknown") -> str:
     """Convert markdown to HTML with Bootstrap styling"""
     # Simple markdown to HTML conversion
     import re
+
+    # Scan for available reports for navigation
+    available_reports = _scan_available_reports(run_dir) if run_dir else {}
 
     html_lines = []
     in_table = False
@@ -696,7 +747,52 @@ def markdown_to_html(markdown_text: str) -> str:
 </body>
 </html>
     """
-    return html
+
+    # ACTUALLY: Use brand kit instead of inline styles (LEGACY CODE ABOVE)
+    # Wrap content in brand kit template for consistency
+    html_with_brand_kit = get_html_head(
+        title="Statistical Analysis Report",
+        description="Academic-grade statistical analysis with Wilson score confidence intervals"
+    )
+
+    html_with_brand_kit += f"""
+<body>
+    {get_navigation_bar(
+        active_page='statistical',
+        run_id=run_id,
+        base_path="",
+        quality_report=available_reports.get('quality_benchmark'),
+        statistical_report=available_reports.get('statistical_analysis'),
+        forensic_reports=available_reports.get('forensics', {})
+    )}
+
+    <div class="main-container">
+        {get_page_header(
+            title="Statistical Analysis Report",
+            subtitle="Wilson score confidence intervals and statistical significance testing",
+            meta_info=f"Generated: {format_timestamp()}"
+        )}
+
+        <div class="content-section">
+            <div class="info-box">
+                {html_content}
+            </div>
+
+            <!-- Footer -->
+            <hr class="mt-5">
+            <div class="text-center text-muted mb-4">
+                <p>
+                    <strong>Statistical Analysis</strong> |
+                    Generated: {format_timestamp()}
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+    return html_with_brand_kit
 
 
 def main():

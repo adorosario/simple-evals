@@ -13,10 +13,13 @@ This script generates:
 1. Main forensic dashboard with links to all reports
 2. Individual HTML reports for each failed question
 3. Individual JSON reports for programmatic analysis
+
+Uses unified brand kit for consistent, Apple-inspired design.
 """
 
 import json
 import argparse
+import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -24,6 +27,15 @@ import markdown
 import os
 import time
 import requests
+
+# Add parent directory to path for brand kit import
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from brand_kit import (
+    get_html_head,
+    get_navigation_bar,
+    get_page_header,
+    format_timestamp
+)
 
 # Provider display names
 PROVIDER_DISPLAY_NAMES = {
@@ -41,6 +53,41 @@ PROVIDER_KEYS = {
 
 # Citation content cache to avoid redundant API calls
 _CITATION_CACHE = {}
+
+
+def _scan_available_reports(results_dir: str) -> dict:
+    """
+    Scan results directory for available reports.
+
+    Returns:
+        Dictionary mapping report types to file paths (relative to results_dir)
+    """
+    reports = {
+        'quality_benchmark': None,
+        'statistical_analysis': None,
+        'forensics': {}
+    }
+
+    results_path = Path(results_dir)
+
+    # Find quality benchmark report
+    for file in results_path.glob("quality_benchmark_report_*.html"):
+        reports['quality_benchmark'] = file.name
+        break
+
+    # Find statistical analysis report
+    for file in results_path.glob("statistical_analysis_run_*.html"):
+        reports['statistical_analysis'] = file.name
+        break
+
+    # Find forensic dashboards
+    for forensic_dir in results_path.glob("*_forensics"):
+        provider = forensic_dir.name.replace("_forensics", "")
+        dashboard = forensic_dir / "forensic_dashboard.html"
+        if dashboard.exists():
+            reports['forensics'][provider] = f"{forensic_dir.name}/forensic_dashboard.html"
+
+    return reports
 
 
 def fetch_citation_content(
@@ -348,13 +395,25 @@ def generate_provider_debugging_section(provider: str, metadata: Optional[Dict[s
 
         debug_urls = metadata.get('debug_urls', {})
         if debug_urls.get('message_endpoint'):
+            # Convert API URL to web app URL
+            # From: https://app.customgpt.ai/api/v1/projects/{project_id}/conversations/{session_id}/messages/{message_id}
+            # To: https://app.customgpt.ai/projects/{project_id}/ask/{session_id}
+            api_url = debug_urls['message_endpoint']
+            project_id = metadata.get('project_id', 'N/A')
+            session_id = metadata.get('session_id', 'N/A')
+
+            if project_id != 'N/A' and session_id != 'N/A':
+                web_app_url = f"https://app.customgpt.ai/projects/{project_id}/ask/{session_id}"
+            else:
+                web_app_url = api_url  # Fallback to API URL if we can't construct web URL
+
             html += f"""
                                 <div class="mb-2">
-                                    <strong>Message Endpoint:</strong><br>
-                                    <a href="{debug_urls['message_endpoint']}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                        <i class="fas fa-external-link-alt"></i> View Message
+                                    <strong>View in CustomGPT:</strong><br>
+                                    <a href="{web_app_url}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-external-link-alt"></i> View Conversation
                                     </a>
-                                    <button class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText('{debug_urls['message_endpoint']}')">
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText('{web_app_url}')">
                                         <i class="fas fa-copy"></i> Copy URL
                                     </button>
                                 </div>
@@ -605,63 +664,43 @@ def generate_individual_question_html(
     if audit_log_path:
         provider_meta = extract_provider_metadata(audit_log_path, question_id, provider_key)
 
+    # Infer run_dir from output_file path (go up one level from the forensics subdirectory)
+    run_dir = str(output_file.parent.parent)
+    available_reports = _scan_available_reports(run_dir)
+
     # Get provider-specific fields with fallback
     provider_answer = question_data.get(f'{provider}_answer', 'N/A')
     provider_grade = question_data.get(f'{provider}_grade', 'N/A')
     provider_confidence = question_data.get(f'{provider}_confidence', 0.0)
 
-    content = f"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Forensic Analysis - {question_id} - {provider_display}</title>
+    # Get run ID from question data if available
+    run_id = question_data.get('run_id', 'unknown')
 
-    <!-- External Dependencies -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    # Start HTML with brand kit
+    html = get_html_head(
+        title=f"Forensic Analysis - {question_id} - {provider_display}",
+        description=f"{provider_display} penalty case investigation for {question_id}"
+    )
 
-    <!-- JavaScript Dependencies -->
-    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-
-    <style>
-        .question-card {{ border-left: 4px solid #dc3545; }}
-        .metric-card {{ border-left: 4px solid #0d6efd; }}
-        .analysis-section {{ background-color: #f8f9fa; border-radius: 8px; padding: 20px; margin: 15px 0; }}
-        .grade-badge {{ font-size: 1.1em; }}
-        pre {{ background-color: #f8f9fa; padding: 15px; border-radius: 5px; font-size: 0.9em; }}
-        .forensic-nav {{ background-color: #212529; }}
-        .forensic-nav .nav-link {{ color: #adb5bd; }}
-        .forensic-nav .nav-link:hover {{ color: #fff; }}
-        .forensic-nav .nav-link.active {{ color: #fff; background-color: #495057; }}
-    </style>
-</head>
+    html += f"""
 <body>
+    {get_navigation_bar(
+        active_page='forensic',
+        run_id=run_id,
+        base_path="../",
+        quality_report=available_reports.get('quality_benchmark'),
+        statistical_report=available_reports.get('statistical_analysis'),
+        forensic_reports=available_reports.get('forensics', {})
+    )}
 
-    <nav class="navbar navbar-expand-lg forensic-nav">
-        <div class="container-fluid">
-            <a class="navbar-brand text-white" href="forensic_dashboard.html">
-                <i class="fas fa-arrow-left"></i> Back to Dashboard
-            </a>
-            <span class="navbar-text text-light">Question: {question_id} - Provider: {provider_display}</span>
-        </div>
-    </nav>
+    <div class="main-container">
+        {get_page_header(
+            title=f"Forensic Analysis: {question_id}",
+            subtitle=f"{provider_display} failure investigation with competitive analysis",
+            meta_info=f"Provider: <strong>{provider_display}</strong> | Generated: {format_timestamp()}"
+        )}
 
-    <div class="container-fluid mt-4">
-        <div class="row">
-            <div class="col-12">
-                <h1 class="mb-4">
-                    <i class="fas fa-microscope text-danger"></i>
-                    Forensic Analysis: {question_id}
-                </h1>
-                <p class="lead">{provider_display} failure investigation with competitive analysis</p>
-            </div>
-        </div>
+        <div class="content-section">
 
         <!-- Question Details -->
         <div class="row mb-4">
@@ -674,16 +713,14 @@ def generate_individual_question_html(
                         <div class="row">
                             <div class="col-md-6">
                                 <p><strong>Question ID:</strong> <code>{question_id}</code></p>
-                                <p><strong>Domain:</strong> <span class="badge bg-secondary">{question_data.get('domain', 'Unknown')}</span></p>
-                                <p><strong>Complexity:</strong> {question_data.get('complexity', 0.0):.3f}</p>
                                 <p><strong>Penalty Points:</strong> <span class="text-danger fw-bold">{question_data.get('penalty_points', 0.0)}</span></p>
+                                <p><strong>Penalty Type:</strong> {question_data.get('penalty_type', 'Unknown').replace('_', ' ').title()}</p>
                             </div>
                             <div class="col-md-6">
                                 <p><strong>{provider_display} Confidence:</strong>
                                     <span class="badge bg-warning">{provider_confidence:.3f}</span>
                                 </p>
                                 <p><strong>{provider_display} Grade:</strong> <span class="badge bg-danger grade-badge">{provider_grade}</span></p>
-                                <p><strong>Penalty Type:</strong> {question_data.get('penalty_type', 'Unknown').replace('_', ' ').title()}</p>
                             </div>
                         </div>
                         <div class="mt-3">
@@ -747,7 +784,7 @@ def generate_individual_question_html(
         status_color = "success" if comp_data['status'] == 'PASSED' else "danger"
         grade_color = "success" if comp_data['grade'] == 'A' else "danger"
 
-        content += f"""
+        html += f"""
                                     <tr class="{status_class}">
                                         <td><strong>{comp_display}</strong></td>
                                         <td>{comp_data['answer']}</td>
@@ -756,7 +793,7 @@ def generate_individual_question_html(
                                     </tr>
         """
 
-    content += """
+    html += """
                                 </tbody>
                             </table>
                         </div>
@@ -767,10 +804,10 @@ def generate_individual_question_html(
     """
 
     # Add provider-specific debugging section
-    content += generate_provider_debugging_section(provider, provider_meta)
+    html += generate_provider_debugging_section(provider, provider_meta)
 
     # Judge Evaluation
-    content += f"""
+    html += f"""
         <!-- Judge Evaluation with Confidence Visualization -->
         <div class="row mb-4">
             <div class="col-12">
@@ -819,31 +856,33 @@ def generate_individual_question_html(
             </div>
         </div>
 
-        <!-- Navigation -->
-        <div class="row">
-            <div class="col-12 text-center">
-                <a href="forensic_dashboard.html" class="btn btn-primary">
-                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+            <!-- Navigation -->
+            <div class="text-center mt-4">
+                <a href="forensic_dashboard.html" class="btn btn-primary me-2">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Forensic Dashboard
                 </a>
-                <a href="#top" class="btn btn-secondary">
-                    <i class="fas fa-arrow-up"></i> Back to Top
+                <a href="../index.html" class="btn btn-outline-secondary">
+                    <i class="fas fa-home me-1"></i>Main Dashboard
                 </a>
+            </div>
+
+            <!-- Footer -->
+            <hr class="mt-5">
+            <div class="text-center text-muted mb-4">
+                <p>
+                    <strong>{provider_display} Forensic Analysis</strong> |
+                    Question: <code>{question_id}</code> |
+                    Generated: {format_timestamp()}
+                </p>
             </div>
         </div>
     </div>
-
-    <footer class="bg-dark text-light text-center py-3 mt-5">
-        <p>&copy; 2025 {provider_display} Forensic Analysis - Question {question_id} - Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-    </footer>
-
-    <!-- No DataTables on individual pages - tables have varying structures -->
 </body>
-</html>
-    """
+</html>"""
 
     # Write to file
     with open(output_file, 'w') as f:
-        f.write(content)
+        f.write(html)
 
     return str(output_file)
 
@@ -921,7 +960,7 @@ def generate_dashboard(
     provider: str,
     output_file: Path
 ) -> str:
-    """Generate forensic dashboard HTML"""
+    """Generate forensic dashboard HTML using brand kit"""
 
     provider_display = PROVIDER_DISPLAY_NAMES[provider]
     penalty_cases = penalty_data.get('penalty_cases', [])
@@ -930,42 +969,38 @@ def generate_dashboard(
     total_failures = analysis.get('total_penalties', 0)
     total_penalty_points = analysis.get('total_penalty_points', 0.0)
 
-    content = f"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{provider_display} Forensic Dashboard</title>
+    # Infer run_dir from output_file path (go up one level from the forensics subdirectory)
+    run_dir = str(output_file.parent.parent)
+    available_reports = _scan_available_reports(run_dir)
 
-    <!-- External Dependencies -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    # Get run ID if available
+    run_id = penalty_data.get('run_id', 'unknown')
 
-    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    # Start HTML with brand kit
+    html = get_html_head(
+        title=f"{provider_display} Forensic Dashboard",
+        description=f"Forensic analysis dashboard for {provider_display} penalty cases"
+    )
 
-    <style>
-        .question-card {{ border-left: 4px solid #dc3545; }}
-        .metric-card {{ border-left: 4px solid #0d6efd; }}
-        .forensic-nav {{ background-color: #212529; }}
-    </style>
-</head>
+    html += f"""
 <body>
+    {get_navigation_bar(
+        active_page='forensic',
+        run_id=run_id,
+        base_path="../",
+        quality_report=available_reports.get('quality_benchmark'),
+        statistical_report=available_reports.get('statistical_analysis'),
+        forensic_reports=available_reports.get('forensics', {})
+    )}
 
-    <nav class="navbar navbar-expand-lg forensic-nav">
-        <div class="container-fluid">
-            <a class="navbar-brand text-white" href="#">
-                <i class="fas fa-microscope"></i> {provider_display} Forensic Analysis
-            </a>
-        </div>
-    </nav>
+    <div class="main-container">
+        {get_page_header(
+            title=f"{provider_display} Forensic Analysis",
+            subtitle="Complete penalty case investigation and competitive analysis",
+            meta_info=f"Generated: {format_timestamp()}"
+        )}
 
-    <div class="container-fluid mt-4">
-        <div class="row">
+        <div class="content-section">
             <div class="col-12">
                 <h1 class="mb-4">
                     <i class="fas fa-exclamation-triangle text-danger"></i>
@@ -1030,7 +1065,7 @@ def generate_dashboard(
         grade = case.get(f'{provider}_grade', 'N/A')
         penalty_points = case.get('penalty_points', 0.0)
 
-        content += f"""
+        html += f"""
                                 <tr>
                                     <td><code>{question_id}</code></td>
                                     <td>{question}</td>
@@ -1044,7 +1079,7 @@ def generate_dashboard(
                                 </tr>
         """
 
-    content += """
+    html += """
                             </tbody>
                         </table>
                     </div>
@@ -1053,25 +1088,36 @@ def generate_dashboard(
         </div>
     </div>
 
-    <footer class="bg-dark text-light text-center py-3 mt-5">
-        <p>&copy; 2025 """ + provider_display + """ Forensic Analysis - Generated on """ + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + """</p>
-    </footer>
+            <!-- Footer -->
+            <hr class="mt-5">
+            <div class="text-center text-muted mb-4">
+                <p>
+                    <strong>""" + provider_display + """ Forensic Dashboard</strong> |
+                    Generated: """ + format_timestamp() + """
+                </p>
+            </div>
+        </div>
+    </div>
 
+    <!-- DataTables Script -->
     <script>
         $(document).ready(function() {
             $('#penaltyTable').DataTable({
                 pageLength: 25,
                 order: [[0, 'asc']],
-                responsive: true
+                responsive: true,
+                language: {
+                    search: "Search:",
+                    lengthMenu: "Show _MENU_ entries"
+                }
             });
         });
     </script>
 </body>
-</html>
-    """
+</html>"""
 
     with open(output_file, 'w') as f:
-        f.write(content)
+        f.write(html)
 
     return str(output_file)
 

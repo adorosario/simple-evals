@@ -4,16 +4,20 @@ OpenAI Flex Service Tier Comparison Test
 
 This script compares GPT-5 performance between standard and flex service tiers,
 measuring latency, success rates, and response quality using sample queries.
+
+Uses unified brand kit for consistent, Apple-inspired HTML reports.
 """
 
 import csv
 import json
 import os
+import sys
 import statistics
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, asdict
 from datetime import datetime
+from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import argparse
 
@@ -22,6 +26,15 @@ from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Add parent directory to path for brand kit import
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from brand_kit import (
+    get_html_head,
+    get_navigation_bar,
+    get_page_header,
+    format_timestamp
+)
 
 
 @dataclass
@@ -345,7 +358,7 @@ class FlexTierComparison:
         return report_path
 
     def _generate_html_report(self, results: List[TestResult], stats: Dict[str, ComparisonStats]) -> str:
-        """Generate HTML report content"""
+        """Generate HTML report content using brand kit"""
 
         # Calculate comparison metrics
         if "standard" in stats and "flex" in stats:
@@ -362,36 +375,26 @@ class FlexTierComparison:
             latency_improvement = success_rate_diff = cost_savings = 0
             standard_stats = flex_stats = None
 
-        html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <title>OpenAI Flex vs Standard Service Tier Comparison</title>
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; }}
-        .header {{ background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px; }}
-        .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px; }}
-        .metric-card {{ background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; }}
-        .metric-value {{ font-size: 2em; font-weight: bold; color: #0066cc; }}
-        .metric-label {{ color: #6c757d; font-size: 0.9em; }}
-        .stats-table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
-        .stats-table th, .stats-table td {{ padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6; }}
-        .stats-table th {{ background-color: #f8f9fa; font-weight: 600; }}
-        .tier-standard {{ color: #28a745; }}
-        .tier-flex {{ color: #007bff; }}
-        .success {{ color: #28a745; }}
-        .error {{ color: #dc3545; }}
-        .details {{ margin-top: 30px; }}
-        .query-results {{ max-height: 400px; overflow-y: auto; border: 1px solid #dee2e6; }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>OpenAI Flex vs Standard Service Tier Comparison</h1>
-        <p><strong>Model:</strong> {self.model} | <strong>Generated:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")} | <strong>Total Queries:</strong> {len(results) // 2}</p>
-    </div>
+        # Start HTML with brand kit
+        html = get_html_head(
+            title="OpenAI Flex vs Standard Service Tier Comparison",
+            description="Performance comparison between GPT-5 Flex and Standard service tiers"
+        )
 
-    <div class="summary">
+        html += f"""
+<body>
+    {get_navigation_bar(active_page='quality', run_id='unknown')}
+
+    <div class="main-container">
+        {get_page_header(
+            title="OpenAI Flex vs Standard Tier Comparison",
+            subtitle=f"Model: {self.model} | Total Queries: {len(results) // 2}",
+            meta_info=f"Generated: {format_timestamp()}"
+        )}
+
+        <div class="content-section">
+            <!-- Summary Metrics -->
+            <div class="metric-grid">
         <div class="metric-card">
             <div class="metric-value">{latency_improvement:+.1f}%</div>
             <div class="metric-label">Latency Change (Flex vs Standard)</div>
@@ -569,6 +572,15 @@ class FlexTierComparison:
         html += """
                 </tbody>
             </table>
+
+            <!-- Footer -->
+            <hr class="mt-5">
+            <div class="text-center text-muted mb-4">
+                <p>
+                    <strong>Flex vs Standard Tier Comparison</strong> |
+                    Generated: """ + format_timestamp() + """
+                </p>
+            </div>
         </div>
     </div>
 </body>
