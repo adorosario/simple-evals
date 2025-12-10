@@ -1,0 +1,412 @@
+Skip to
+content
+Kaggle
+
+Create
+Home
+
+Competitions
+
+Datasets
+
+Models
+
+Benchmarks
+
+Game Arena
+
+Code
+
+Discussions
+
+Learn
+
+More
+
+
+View Active Events
+
+Search
+
+Kaggle uses cookies from Google to deliver and enhance the quality of its services and to analyze traffic.
+Learn more
+OK, Got it.
+Google DeepMind · Benchmark · v1
+
+Share
+SimpleQA Verified
+A reliable factuality benchmark to measure parametric knowledge.
+
+SimpleQA Verified is a 1,000-prompt benchmark for reliably evaluating Large Language Models (LLMs) on short-form factuality and parametric knowledge. The authors from Google DeepMind and Google Research address various limitations of SimpleQA, originally designed by Wei et al. (2024) at OpenAI, including noisy and incorrect labels, topical biases, and question redundancy. SimpleQA Verified was created to provide the research community with a more precise instrument to track genuine progress in factuality, discourage overfitting to benchmark artifacts, and ultimately foster the development of more trustworthy AI systems.
+
+Dataset
+Paper
+Notebook
+
+Download
+Results independently reproduced by Kaggle. Learn more
+
+Last updated November 24, 2025
+
+#
+Model
+F1-Score
+
+1
+
+Gemini 3 Pro Preview
+
+2
+
+Gemini 2.5 Pro
+
+3
+
+Qwen 3 235B A22B Thinking
+
+4
+
+o3
+
+5
+
+Grok 4
+
+6
+
+GPT-5
+
+7
+
+o1
+
+8
+
+GPT-4.1
+
+9
+
+Grok 3
+
+10
+
+Claude Opus 4.5
+
+11
+
+GPT-5.1
+
+12
+
+GPT-4o
+
+13
+
+Claude 3.7 Sonnet
+
+14
+
+Claude Opus 4.1
+
+15
+
+Claude Sonnet 4.5 (thinking)
+
+16
+
+DeepSeek-R1
+
+17
+
+Gemini 2.5 Flash
+
+18
+
+DeepSeek-V3
+
+19
+
+Claude Opus 4
+
+20
+
+Claude 3.5 Sonnet
+
+21
+
+Gemini 1.5 Pro
+
+22
+
+Deepseek V3.1
+
+23
+
+Gemini 2.0 Flash
+
+24
+
+Mistral Large 2
+
+25
+
+o4 mini
+
+26
+
+Grok 2
+
+27
+
+Grok 3 Mini
+
+28
+
+Grok 4 Fast Reasoning
+
+29
+
+Claude Sonnet 4.5
+
+30
+
+Claude Sonnet 4
+
+31
+
+Mixtral 8x22B
+
+32
+
+o3 mini
+
+33
+
+gpt-oss-120b
+
+34
+
+GPT-3.5 Turbo
+
+35
+
+Gemma 3 27B
+
+36
+
+Claude 3.5 Haiku
+
+37
+
+o1 mini
+
+38
+
+GPT-4o mini
+
+39
+
+Gemini 1.5 Flash
+
+40
+
+Granite 4.0 Small
+
+41
+
+Ministral 8B
+
+42
+
+Gemma 3 12B
+
+43
+
+gpt-oss-20b
+
+44
+
+Gemini 1.5 Flash 8B
+
+45
+
+Codestral
+
+46
+
+Ministral 3B
+
+47
+
+Gemma 3 4B
+
+🥇
+72.1%
+±2.9%
+
+🥈
+54.5%
+±3.2%
+
+🥉
+53.7%
+±3.4%
+
+52.3%
+±3.1%
+
+51.9%
+±3.2%
+
+51.6%
+±3.1%
+
+47.0%
+±3.1%
+
+40.6%
+±3.4%
+
+39.3%
+±2.9%
+
+39.0%
+±3.3%
+
+34.9%
+±3.0%
+
+33.6%
+±3.2%
+
+32.3%
+±3.1%
+
+31.0%
+±3.3%
+
+29.2%
+±3.2%
+
+28.6%
+±2.8%
+
+28.1%
+±2.8%
+
+27.4%
+±3.1%
+
+26.7%
+±3.3%
+
+26.7%
+±3.1%
+
+25.1%
+±2.7%
+
+24.3%
+±2.7%
+
+22.8%
+±2.6%
+
+22.3%
+±2.6%
+
+21.2%
+±2.6%
+
+20.5%
+±2.5%
+
+20.2%
+±2.7%
+
+19.7%
+±2.6%
+
+19.3%
+±3.2%
+
+18.9%
+±2.8%
+
+17.8%
+±2.4%
+
+15.9%
+±2.3%
+
+13.1%
+±2.1%
+
+11.2%
+±2.0%
+
+10.7%
+±1.9%
+
+10.3%
+±2.2%
+
+9.3%
+±2.0%
+
+9.1%
+±1.9%
+
+8.8%
+±1.9%
+
+8.6%
+±1.9%
+
+6.8%
+±1.7%
+
+6.7%
+±1.6%
+
+5.9%
+±1.6%
+
+5.9%
+±1.6%
+
+5.6%
+±1.5%
+
+5.4%
+±1.5%
+
+4.6%
+±1.4%
+
+About SimpleQA Verified
+SimpleQA Verified is based on SimpleQA, released by Wei et al. (2024) at OpenAI. The original dataset of 4,326 questions was reduced to 1,000 prompts to address limitations in the original benchmark, including noisy and incorrect labels, topical biases, and question redundancy. SimpleQA Verified was created through a rigorous filtering process involving de-duplication, topic balancing, and source reconciliation to produce a more reliable and challenging evaluation set. Similar to SimpleQA, model responses are graded with a GPT-4.1 version. The autorater prompt has been modified with a focus on forcing direct answers, preventing guessing in long responses, and improving the grading of numeric answer types.
+
+For more details, please refer to the Technical Report.
+
+Answer Type Distribution
+The following chart shows the distribution of answer types in SimpleQA Verified compared to the original benchmark. SimpleQA Verified consists of more diverse answer types, and focuses less on dates which almost one third of questions in SimpleQA did.
+
+
+Topic Distribution
+Question topics have also been rebalanced in SimpleQA Verified. The following chart shows the distribution of topics relative to OpenAI’s SimpleQA.
+
+
+Running SimpleQA Verified
+If you would like to evaluate a model of your choice on SimpleQA Verified, please use the linked Notebook as an example of how to compute all relevant metrics based on your own model’s responses.
+
+Limitations
+While SimpleQA Verified is a challenging benchmark to evaluate the parametric knowledge of LLMs, with tools (particular search tools), the benchmark is trivial to solve which defeats its purpose.
+
+Questions, comments, issues, or request for new models? Share your thoughts with us in the discussion forum.
+
+Lukas Haas and Gal Yona and Giovanni D'Antonio and Sasha Goldshtein and Dipanjan Das. SimpleQA Verified: A Reliable Factuality Benchmark to Measure Parametric Knowledge. https://arxiv.org/abs/2509.07968, 2025. Google DeepMind, Google Research.
+
+Cite
+Citation
+

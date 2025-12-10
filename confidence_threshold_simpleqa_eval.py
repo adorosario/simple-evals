@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 from datetime import datetime
+from pathlib import Path
 
 import pandas
 import requests
@@ -661,11 +662,37 @@ class ConfidenceThresholdSimpleQAEval(Eval):
                     }
                 )
 
-        with requests.get("https://openaipublic.blob.core.windows.net/simple-evals/simple_qa_test_set.csv") as response:
-            blob_file = io.BytesIO(response.content)
-            df = pandas.read_csv(blob_file)
+        # Use verified SimpleQA subset (1000 questions with KB coverage)
+        # This ensures questions are answerable from the knowledge base
+        verified_csv_path = Path(__file__).parent / "simpleqa-verified" / "simpleqa_verified.csv"
 
-        examples = [row.to_dict() for _, row in df.iterrows()]
+        if verified_csv_path.exists():
+            df = pandas.read_csv(verified_csv_path)
+            # Map columns to match original SimpleQA format
+            # verified CSV has: original_index, problem, answer, topic, answer_type, multi_step, requires_reasoning, urls
+            # original CSV has: problem, answer, metadata (JSON with topic, answer_type, urls)
+            examples = []
+            for _, row in df.iterrows():
+                example = {
+                    'problem': row['problem'],
+                    'answer': row['answer'],
+                    'metadata': {
+                        'topic': row.get('topic', ''),
+                        'answer_type': row.get('answer_type', ''),
+                        'urls': row.get('urls', '').split(',') if isinstance(row.get('urls', ''), str) else []
+                    },
+                    'original_index': row.get('original_index', 0)
+                }
+                examples.append(example)
+            print(f"✓ Loaded {len(examples)} questions from verified SimpleQA dataset")
+        else:
+            # Fallback to original dataset (for backwards compatibility)
+            print(f"⚠ Warning: Verified dataset not found at {verified_csv_path}")
+            print("  Falling back to original SimpleQA dataset (may include questions not in KB)")
+            with requests.get("https://openaipublic.blob.core.windows.net/simple-evals/simple_qa_test_set.csv") as response:
+                blob_file = io.BytesIO(response.content)
+                df = pandas.read_csv(blob_file)
+            examples = [row.to_dict() for _, row in df.iterrows()]
 
         # Use single randomization seed for all operations to ensure reproducibility
         rng = random.Random(42)  # Fixed seed for all random operations
