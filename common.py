@@ -190,7 +190,8 @@ def aggregate_results(
 
     # Fields to exclude from aggregation (non-numeric metadata)
     exclude_from_aggregation = {
-        "api_error", "abstention_type", "abstention_reasoning", "attempt_reasoning"
+        "api_error", "abstention_type", "abstention_reasoning", "attempt_reasoning",
+        "token_usage"  # Dict containing prompt_tokens, completion_tokens, total_tokens
     }
 
     for single_eval_result in single_eval_results:

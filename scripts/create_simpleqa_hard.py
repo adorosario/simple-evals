@@ -31,7 +31,7 @@ SOURCE_CSV = Path("/app/build-rag/simple_qa_test_set.csv")
 OUTPUT_DIR = Path("/app/build-rag/simpleqa_hard")
 
 # RAG providers to track (exclude OpenAI_Vanilla)
-RAG_PROVIDERS = {"OpenAI_RAG", "CustomGPT_RAG"}
+RAG_PROVIDERS = {"OpenAI_RAG", "CustomGPT_RAG", "Google_Gemini_RAG"}
 
 
 def find_judge_evaluation_files() -> List[Path]:

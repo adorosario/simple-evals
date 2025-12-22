@@ -21,7 +21,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from sampler.audited_customgpt_sampler import AuditedCustomGPTSampler
 from sampler.audited_openai_vanilla_sampler import AuditedOpenAIVanillaSampler
 from sampler.audited_openai_rag_sampler import AuditedOpenAIRAGSampler
+from sampler.audited_gemini_rag_sampler import AuditedGeminiRAGSampler
 from confidence_threshold_simpleqa_eval import ConfidenceThresholdSimpleQAEval, CONFIDENCE_THRESHOLDS
+
+# Standardized system prompts for fair comparison
+STANDARD_RAG_SYSTEM_PROMPT = """You are a helpful assistant. Use the knowledge base to provide accurate, detailed answers.
+If the answer is not in the knowledge base, say: "I don't know based on the available documentation."
+Be concise and factual."""
+
+STANDARD_VANILLA_SYSTEM_PROMPT = """You are a helpful assistant. Answer questions based on your training knowledge.
+If you're not confident in your answer, say: "I don't know."
+Be concise and factual."""
 from audit_logger import AuditLogger, create_run_id
 from leaderboard_generator import LeaderboardGenerator
 
@@ -38,28 +48,28 @@ def setup_samplers(audit_logger=None):
     samplers = {}
     errors = []
 
-    # 1. CustomGPT RAG Sampler (with GPT-4.1)
+    # 1. CustomGPT RAG Sampler (with GPT-5.1)
     print("🔧 Setting up CustomGPT (RAG) sampler...")
     try:
-        os.environ["CUSTOMGPT_MODEL_NAME"] = "gpt-4.1"
+        os.environ["CUSTOMGPT_MODEL_NAME"] = "gpt-5.1"
         sampler = AuditedCustomGPTSampler.from_env(audit_logger=audit_logger)
         samplers["CustomGPT_RAG"] = sampler
 
         if audit_logger:
             audit_logger.add_provider("CustomGPT_RAG", sampler._get_request_data([]))
 
-        print("   ✅ CustomGPT sampler ready (GPT-4.1)")
+        print("   ✅ CustomGPT sampler ready (GPT-5.1)")
     except Exception as e:
         error_msg = f"CustomGPT setup failed: {e}"
         print(f"   ❌ {error_msg}")
         errors.append(error_msg)
 
-    # 2. OpenAI Vanilla Sampler (no RAG, using GPT-4.1)
+    # 2. OpenAI Vanilla Sampler (no RAG, using GPT-5.1)
     print("🔧 Setting up OpenAI Vanilla (no RAG) sampler...")
     try:
         sampler = AuditedOpenAIVanillaSampler(
-            model="gpt-4.1",
-            system_message="You are a helpful assistant. Answer questions based on your training knowledge.",
+            model="gpt-5.1",
+            system_message=STANDARD_VANILLA_SYSTEM_PROMPT,
             temperature=0,
             audit_logger=audit_logger
         )
@@ -68,20 +78,20 @@ def setup_samplers(audit_logger=None):
         if audit_logger:
             audit_logger.add_provider("OpenAI_Vanilla", sampler._get_request_data([]))
 
-        print("   ✅ OpenAI Vanilla sampler ready (GPT-4.1)")
+        print("   ✅ OpenAI Vanilla sampler ready (GPT-5.1)")
     except Exception as e:
         error_msg = f"OpenAI Vanilla setup failed: {e}"
         print(f"   ❌ {error_msg}")
         errors.append(error_msg)
 
-    # 3. OpenAI RAG Sampler (with vector store, using GPT-4.1)
+    # 3. OpenAI RAG Sampler (with vector store, using GPT-5.1)
     print("🔧 Setting up OpenAI RAG (vector store) sampler...")
     try:
         vector_store_id = os.environ.get("OPENAI_VECTOR_STORE_ID")
         if vector_store_id:
             sampler = AuditedOpenAIRAGSampler(
-                model="gpt-4.1",
-                system_message="You are a helpful assistant. Use the knowledge base to provide accurate, detailed answers.",
+                model="gpt-5.1",
+                system_message=STANDARD_RAG_SYSTEM_PROMPT,
                 temperature=0,
                 audit_logger=audit_logger
             )
@@ -90,13 +100,40 @@ def setup_samplers(audit_logger=None):
             if audit_logger:
                 audit_logger.add_provider("OpenAI_RAG", sampler._get_request_data([]))
 
-            print("   ✅ OpenAI RAG sampler ready (GPT-4.1)")
+            print("   ✅ OpenAI RAG sampler ready (GPT-5.1)")
         else:
             error_msg = "OpenAI RAG setup failed: OPENAI_VECTOR_STORE_ID not set"
             print(f"   ❌ {error_msg}")
             errors.append(error_msg)
     except Exception as e:
         error_msg = f"OpenAI RAG setup failed: {e}"
+        print(f"   ❌ {error_msg}")
+        errors.append(error_msg)
+
+    # 4. Google Gemini RAG Sampler (with File Search, using gemini-3-pro-preview)
+    print("🔧 Setting up Google Gemini RAG (File Search) sampler...")
+    try:
+        google_store_name = os.environ.get("GOOGLE_FILE_SEARCH_STORE_NAME")
+        if google_store_name:
+            sampler = AuditedGeminiRAGSampler(
+                store_name=google_store_name,
+                model="gemini-3-pro-preview",
+                system_message=STANDARD_RAG_SYSTEM_PROMPT,
+                temperature=0.0,
+                audit_logger=audit_logger
+            )
+            samplers["Google_Gemini_RAG"] = sampler
+
+            if audit_logger:
+                audit_logger.add_provider("Google_Gemini_RAG", sampler._get_request_data([]))
+
+            print("   ✅ Google Gemini RAG sampler ready (gemini-3-pro-preview)")
+        else:
+            error_msg = "Google Gemini RAG setup skipped: GOOGLE_FILE_SEARCH_STORE_NAME not set"
+            print(f"   ⚠️ {error_msg}")
+            # Note: Not adding to errors since this is optional
+    except Exception as e:
+        error_msg = f"Google Gemini RAG setup failed: {e}"
         print(f"   ❌ {error_msg}")
         errors.append(error_msg)
 
@@ -148,7 +185,19 @@ def run_quality_evaluation(sampler_name, sampler, n_samples=10, audit_logger=Non
                 "n_correct": metrics.get("n_correct", 0),
                 "n_incorrect": metrics.get("n_incorrect", 0),
                 "n_not_attempted": metrics.get("n_not_attempted", 0),
-                "conversations": len(eval_result.convos)
+                "conversations": len(eval_result.convos),
+                # Provider performance metrics (latency, tokens, cost)
+                "provider_latency_avg_ms": metrics.get("provider_latency_avg_ms"),
+                "provider_latency_median_ms": metrics.get("provider_latency_median_ms"),
+                "provider_latency_p95_ms": metrics.get("provider_latency_p95_ms"),
+                "provider_latency_min_ms": metrics.get("provider_latency_min_ms"),
+                "provider_latency_max_ms": metrics.get("provider_latency_max_ms"),
+                "total_cost_usd": metrics.get("total_cost_usd"),
+                "avg_cost_per_request_usd": metrics.get("avg_cost_per_request_usd"),
+                "total_tokens": metrics.get("total_tokens"),
+                "avg_tokens_per_request": metrics.get("avg_tokens_per_request"),
+                "avg_prompt_tokens": metrics.get("avg_prompt_tokens"),
+                "avg_completion_tokens": metrics.get("avg_completion_tokens")
             },
             "eval_result": eval_result  # Store full result for further analysis
         }
@@ -487,8 +536,8 @@ def generate_quality_benchmark_report(results, output_dir, run_metadata):
                     <div class="col-md-6">
                         <p><strong>Methodology:</strong></p>
                         <ul class="list-unstyled">
-                            <li><i class="fas fa-robot me-2"></i><strong>Providers:</strong> GPT-4.1 (standardized across all RAG systems)</li>
-                            <li><i class="fas fa-gavel me-2"></i><strong>Judge:</strong> GPT-5 {"with Flex Tier (50% cost savings, slower)" if run_metadata.get("use_flex_tier", False) else "Standard Tier (faster responses)"}</li>
+                            <li><i class="fas fa-robot me-2"></i><strong>Providers:</strong> GPT-5.1 / Gemini 3 Pro (SOTA December 2025)</li>
+                            <li><i class="fas fa-gavel me-2"></i><strong>Judge:</strong> GPT-5.1 {"with Flex Tier (50% cost savings, slower)" if run_metadata.get("use_flex_tier", False) else "Standard Tier (faster responses)"}</li>
                             <li><i class="fas fa-shield-alt me-2"></i><strong>Threshold:</strong> 80% confidence (recommended in paper)</li>
                             <li><i class="fas fa-calculator me-2"></i><strong>Penalty Ratio:</strong> 4.0 (wrong answers = -4 points)</li>
                         </ul>
@@ -728,13 +777,14 @@ def main():
     print("Quality vs Volume Strategy Comparison using 80% Confidence Threshold")
     print("=" * 70)
     print("Comparing:")
-    print("  1. OpenAI Vanilla (no RAG - baseline) [gpt-4.1]")
-    print("  2. OpenAI RAG (vector store file search) [gpt-4.1]")
-    print("  3. CustomGPT (RAG with existing knowledge base) [gpt-4.1]")
+    print("  1. OpenAI Vanilla (no RAG - baseline) [gpt-5.1]")
+    print("  2. OpenAI RAG (vector store file search) [gpt-5.1]")
+    print("  3. CustomGPT (RAG with existing knowledge base) [gpt-5.1]")
+    print("  4. Google Gemini RAG (File Search) [gemini-3-pro]")
     if use_flex_tier:
-        print("LLM-As-A-Judge: GPT-5 with Flex Tier (improved reliability, 50% cost savings, MUCH slower)")
+        print("LLM-As-A-Judge: GPT-5.1 with Flex Tier (improved reliability, 50% cost savings, MUCH slower)")
     else:
-        print("LLM-As-A-Judge: GPT-5 Standard Tier (improved reliability, faster responses)")
+        print("LLM-As-A-Judge: GPT-5.1 Standard Tier (improved reliability, faster responses)")
     print("Quality Methodology: 80% confidence threshold, penalty ratio 4.0")
     print("=" * 70)
 
@@ -866,6 +916,7 @@ def main():
             volume_score = metrics['volume_score']
             quality_score = metrics['quality_score']
             attempted_rate = metrics['attempted_rate']
+            abstention_rate = metrics.get('abstention_rate', 1.0 - attempted_rate)
 
             # Determine strategy focus
             if quality_score > volume_score:
@@ -879,8 +930,25 @@ def main():
             print(f"      🏆 Quality Score: {quality_score:.3f}")
             print(f"      📊 Volume Score: {volume_score:.3f}")
             print(f"      📈 Attempted Rate: {attempted_rate:.1%}")
+            print(f"      🛡️  Abstention Rate: {abstention_rate:.1%}")
             print(f"      ✅ Success Rate: {metrics['accuracy_given_attempted']:.1%}")
             print(f"      ⚠️  Overconfidence Penalty: {metrics['overconfidence_penalty']}")
+            # Latency metrics
+            latency_avg = metrics.get('provider_latency_avg_ms')
+            latency_p95 = metrics.get('provider_latency_p95_ms')
+            if latency_avg is not None:
+                print(f"      ⏱️  Avg Latency: {latency_avg:,.0f}ms (p95: {latency_p95:,.0f}ms)" if latency_p95 else f"      ⏱️  Avg Latency: {latency_avg:,.0f}ms")
+            else:
+                print(f"      ⏱️  Avg Latency: N/A")
+            # Cost metrics
+            total_cost = metrics.get('total_cost_usd')
+            avg_tokens = metrics.get('avg_tokens_per_request')
+            if total_cost is not None:
+                print(f"      💰 Total Cost: ${total_cost:.6f}")
+            else:
+                print(f"      💰 Total Cost: N/A (subscription model)")
+            if avg_tokens is not None:
+                print(f"      📦 Avg Tokens: {avg_tokens:,.0f}/request")
 
     if failed_results:
         print(f"\n❌ FAILED EVALUATIONS:")

@@ -26,7 +26,7 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
 
     def __init__(
         self,
-        model_name: str = "gpt-4.1",
+        model_name: str = "gpt-5.1",  # GPT-5.1 (SOTA December 2025)
         max_tokens: int = 1024,
         temperature: float = 0,
         top_p: float = 0.95,
@@ -273,6 +273,11 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
             "actual_url": self._current_url,
             "external_id": self._current_external_id,
             "response_headers": self._last_response_headers,
+            # Token usage - CustomGPT API doesn't return token counts
+            "token_usage": None,
+            # Cost - CustomGPT charges $0.10 per addon query
+            "estimated_cost_usd": 0.10,
+            "cost_note": "CustomGPT charges $0.10 per addon query",
             # Debug URLs for server-side investigation
             "debug_urls": {
                 "message_endpoint": f"https://app.customgpt.ai/api/v1/projects/{self.project_id}/conversations/{self._current_session_id}/messages/{self._last_prompt_id}" if self._last_prompt_id else None,
@@ -283,6 +288,6 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
     @classmethod
     def from_env(cls, audit_logger=None):
         """Create sampler from environment variables with audit logging"""
-        model_name = os.environ.get("CUSTOMGPT_MODEL_NAME", "gpt-4.1")
+        model_name = os.environ.get("CUSTOMGPT_MODEL_NAME", "gpt-5.1")
         custom_persona = os.environ.get("CUSTOMGPT_PERSONA", "You are a helpful assistant. Use the knowledge base to provide accurate, detailed answers.")
         return cls(model_name=model_name, custom_persona=custom_persona, audit_logger=audit_logger)

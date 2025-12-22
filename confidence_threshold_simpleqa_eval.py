@@ -24,6 +24,7 @@ from scipy.stats import chi2_contingency, ttest_ind
 
 from custom_types import Eval, EvalResult, SamplerBase, SingleEvalResult
 from sampler.chat_completion_sampler import ChatCompletionSampler
+from pricing_config import calculate_latency_stats, calculate_cost_stats
 import common
 
 
@@ -610,22 +611,22 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         use_flex_tier: bool = False,
         enable_validation: bool = True
     ):
-        # Use GPT-5 as default grader for improved reliability
+        # Use GPT-5.1 as default grader for improved reliability (SOTA December 2025)
         if grader_model is None:
             if use_flex_tier:
                 grader_model = ChatCompletionSampler(
-                    model="gpt-5",
+                    model="gpt-5.1",
                     service_tier="flex",
                     temperature=0,  # Deterministic evaluation
                     seed=42,  # Fixed seed for deterministic judge behavior
-                    reasoning_effort="minimal"  # Fast, consistent responses
+                    reasoning_effort="low"  # Fast, consistent responses
                 )
             else:
                 grader_model = ChatCompletionSampler(
-                    model="gpt-5",
+                    model="gpt-5.1",
                     temperature=0,  # Deterministic evaluation
                     seed=42,  # Fixed seed for deterministic judge behavior
-                    reasoning_effort="minimal",  # Fast, consistent responses
+                    reasoning_effort="low",  # Fast, consistent responses
                     # Add structured output support
                     response_format={
                         "type": "json_schema",
@@ -1172,7 +1173,11 @@ class ConfidenceThresholdSimpleQAEval(Eval):
             }
 
     def _call_provider_single(self, sampler: SamplerBase, row: Dict, provider_name: str) -> Dict[str, any]:
-        """Call provider for a single question"""
+        """Call provider for a single question.
+
+        Uses atomic metric return (return_metrics=True) to avoid race conditions
+        when multiple threads share the same sampler instance.
+        """
         question_id = row.get("question_id", f"q_{uuid.uuid4().hex[:8]}")
         question = row.get("problem", "")
         target = row.get("answer", "")
@@ -1184,9 +1189,34 @@ class ConfidenceThresholdSimpleQAEval(Eval):
             sampler._pack_message(content=clean_prompt, role="user")
         ]
 
-        # Call the sampler once
-        if hasattr(sampler, '__call__') and 'question_id' in sampler.__call__.__code__.co_varnames:
-            response_text = sampler(prompt_messages, question_id=question_id)
+        # Call the sampler with return_metrics=True for thread-safe metric capture
+        # This returns (response, metrics) tuple atomically, avoiding race conditions
+        performance_metrics = {}
+        if hasattr(sampler, '__call__'):
+            call_code = sampler.__call__.__code__
+            supports_question_id = 'question_id' in call_code.co_varnames
+            supports_return_metrics = 'return_metrics' in call_code.co_varnames
+
+            if supports_return_metrics:
+                # Use atomic return to avoid race condition (PREFERRED)
+                if supports_question_id:
+                    response_text, performance_metrics = sampler(
+                        prompt_messages, question_id=question_id, return_metrics=True
+                    )
+                else:
+                    response_text, performance_metrics = sampler(
+                        prompt_messages, return_metrics=True
+                    )
+            else:
+                # Fallback for samplers that don't support return_metrics
+                if supports_question_id:
+                    response_text = sampler(prompt_messages, question_id=question_id)
+                else:
+                    response_text = sampler(prompt_messages)
+
+                # Try to get metrics the old way (may have race condition issues)
+                if hasattr(sampler, 'get_last_performance_metrics'):
+                    performance_metrics = sampler.get_last_performance_metrics()
         else:
             response_text = sampler(prompt_messages)
 
@@ -1196,7 +1226,11 @@ class ConfidenceThresholdSimpleQAEval(Eval):
             "target": target,
             "response": response_text,
             "prompt_messages": prompt_messages,
-            "provider_name": provider_name
+            "provider_name": provider_name,
+            # Provider performance metrics (now captured atomically)
+            "provider_latency_ms": performance_metrics.get("latency_ms"),
+            "token_usage": performance_metrics.get("token_usage"),
+            "estimated_cost_usd": performance_metrics.get("estimated_cost_usd")
         }
 
     def evaluate_provider_responses(self, sampler: SamplerBase, provider_name: str = None) -> List[Dict[str, any]]:
@@ -1442,7 +1476,11 @@ class ConfidenceThresholdSimpleQAEval(Eval):
                 "abstention_type": grading_result.get("abstention_type"),
                 # Store classification metadata
                 "abstention_confidence": grading_result.get("abstention_confidence"),
-                "attempt_confidence": grading_result.get("attempt_confidence")
+                "attempt_confidence": grading_result.get("attempt_confidence"),
+                # Provider performance metrics (latency, tokens, cost)
+                "provider_latency_ms": response_data.get("provider_latency_ms"),
+                "token_usage": response_data.get("token_usage"),
+                "estimated_cost_usd": response_data.get("estimated_cost_usd")
             }
         )
 
@@ -1857,6 +1895,26 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         judge_latencies = [r.metrics["judge_latency_ms"] for r in results if r.metrics.get("judge_latency_ms") and r.metrics["judge_latency_ms"] > 0]
         avg_judge_latency_ms = sum(judge_latencies) / len(judge_latencies) if judge_latencies else 0
 
+        # Provider performance metrics (latency, tokens, cost)
+        provider_latencies = [r.metrics.get("provider_latency_ms") for r in results if r.metrics.get("provider_latency_ms")]
+        latency_stats = calculate_latency_stats(provider_latencies)
+
+        # Token and cost aggregation
+        token_usages = [r.metrics.get("token_usage") for r in results if r.metrics.get("token_usage")]
+        costs = [r.metrics.get("estimated_cost_usd") for r in results if r.metrics.get("estimated_cost_usd") is not None]
+
+        # Extract token details for aggregation
+        total_tokens_list = [t.get("total_tokens", 0) for t in token_usages if t]
+        prompt_tokens_list = [t.get("prompt_tokens", 0) for t in token_usages if t]
+        completion_tokens_list = [t.get("completion_tokens", 0) for t in token_usages if t]
+
+        cost_stats = calculate_cost_stats(
+            costs,
+            total_tokens_list,
+            prompt_tokens_list,
+            completion_tokens_list
+        )
+
         # Statistical analysis - confidence intervals for key metrics (valid responses only)
         volume_scores = [r.metrics["volume_score"] for r in valid_results if r.metrics.get("volume_score") is not None]
         quality_scores = [r.metrics["quality_score"] for r in valid_results if r.metrics.get("quality_score") is not None]
@@ -1903,8 +1961,23 @@ class ConfidenceThresholdSimpleQAEval(Eval):
             "threshold_value": threshold.threshold,
             "penalty_ratio": threshold.penalty_ratio,
 
-            # Performance
+            # Judge Performance
             "avg_judge_latency_ms": avg_judge_latency_ms,
+
+            # Provider Performance (latency stats)
+            "provider_latency_avg_ms": latency_stats.get("avg_ms"),
+            "provider_latency_median_ms": latency_stats.get("median_ms"),
+            "provider_latency_p95_ms": latency_stats.get("p95_ms"),
+            "provider_latency_min_ms": latency_stats.get("min_ms"),
+            "provider_latency_max_ms": latency_stats.get("max_ms"),
+
+            # Cost metrics
+            "total_cost_usd": cost_stats.get("total_usd"),
+            "avg_cost_per_request_usd": cost_stats.get("avg_per_request_usd"),
+            "total_tokens": cost_stats.get("total_tokens"),
+            "avg_tokens_per_request": cost_stats.get("avg_tokens_per_request"),
+            "avg_prompt_tokens": cost_stats.get("avg_prompt_tokens"),
+            "avg_completion_tokens": cost_stats.get("avg_completion_tokens"),
 
             # Statistical analysis - confidence intervals (95%)
             "volume_score_ci_lower": volume_ci[1],

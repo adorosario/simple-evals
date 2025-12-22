@@ -70,7 +70,10 @@ class AuditLogger:
                 "content": response,
                 "latency_ms": latency_ms,
                 "char_count": len(response),
-                "word_count": len(response.split()) if response else 0
+                "word_count": len(response.split()) if response else 0,
+                # Token usage and cost extracted from metadata for easier aggregation
+                "token_usage": (metadata or {}).get("token_usage"),
+                "estimated_cost_usd": (metadata or {}).get("estimated_cost_usd")
             },
             "metadata": metadata or {}
         }

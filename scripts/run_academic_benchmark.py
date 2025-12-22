@@ -149,7 +149,7 @@ class AcademicBenchmarkRunner:
         """Step 2 & 3: Run penalty analysis and forensics for all providers"""
         self.log("PHASE 2 & 3: Provider Analysis and Forensics", "STEP")
 
-        providers = ['customgpt', 'openai_rag', 'openai_vanilla']
+        providers = ['customgpt', 'openai_rag', 'openai_vanilla', 'google_gemini_rag']
 
         for provider in providers:
             self.log(f"\nAnalyzing {provider.upper()}", "STEP")
@@ -236,7 +236,7 @@ class AcademicBenchmarkRunner:
                 missing_optional.append(description)
 
         # Check provider-specific outputs
-        providers = ['customgpt', 'openai_rag', 'openai_vanilla']
+        providers = ['customgpt', 'openai_rag', 'openai_vanilla', 'google_gemini_rag']
         for provider in providers:
             # Check if penalty analysis exists
             penalty_dir = self.run_dir / f"{provider}_penalty_analysis"

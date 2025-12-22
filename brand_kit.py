@@ -49,6 +49,7 @@ BRAND_COLORS = {
     "customgpt": "#10b981",      # Green
     "openai_rag": "#3b82f6",     # Blue
     "openai_vanilla": "#f59e0b", # Amber
+    "google_gemini_rag": "#db2777",  # Pink
 }
 
 
@@ -428,6 +429,11 @@ def get_unified_css() -> str:
             color: #92400e;
         }}
 
+        .provider-google-gemini-rag {{
+            background: #fce7f3;
+            color: #9d174d;
+        }}
+
         .grade-badge {{
             display: inline-block;
             padding: 0.35rem 0.75rem;
@@ -519,7 +525,8 @@ def get_navigation_bar(
         provider_display_names = {
             'customgpt': 'CustomGPT',
             'openai_rag': 'OpenAI RAG',
-            'openai_vanilla': 'OpenAI Vanilla'
+            'openai_vanilla': 'OpenAI Vanilla',
+            'google_gemini_rag': 'Google Gemini RAG'
         }
         for provider_key, report_path in forensic_reports.items():
             display_name = provider_display_names.get(provider_key, provider_key.replace('_', ' ').title())

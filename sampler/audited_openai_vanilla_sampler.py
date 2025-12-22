@@ -5,13 +5,14 @@ Audited OpenAI Vanilla Sampler with comprehensive logging
 import os
 import time
 import threading
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from openai import OpenAI
 import openai
 
 from custom_types import MessageList
 from sampler.audited_sampler_base import AuditedSamplerBase
+from pricing_config import calculate_cost
 
 # Global rate limiter for OpenAI API for fair comparison with other providers
 _openai_vanilla_semaphore = threading.Semaphore(5)  # Max 5 concurrent requests
@@ -24,7 +25,7 @@ class AuditedOpenAIVanillaSampler(AuditedSamplerBase):
 
     def __init__(
         self,
-        model: str = "gpt-4.1",  # GPT-4.1
+        model: str = "gpt-5.1",  # GPT-5.1 (SOTA December 2025)
         system_message: str | None = None,
         temperature: float = 0,
         max_tokens: int = 1024,
@@ -37,6 +38,8 @@ class AuditedOpenAIVanillaSampler(AuditedSamplerBase):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.provider_name = "OpenAI_Vanilla"
+        # Token usage tracking
+        self._last_usage: Optional[Dict[str, int]] = None
 
     def _pack_message(self, role: str, content: Any):
         """Pack message for OpenAI API format"""
@@ -58,16 +61,28 @@ class AuditedOpenAIVanillaSampler(AuditedSamplerBase):
             # Add conversation history
             messages.extend(message_list)
 
+            # Reset usage tracking
+            self._last_usage = None
+
             trial = 0
             while True:
                 try:
                     # Standard chat completion - no RAG
+                    # Use max_completion_tokens for GPT-5.x models
                     response = self.client.chat.completions.create(
                         model=self.model,
                         messages=messages,
                         temperature=self.temperature,
-                        max_tokens=self.max_tokens,
+                        max_completion_tokens=self.max_tokens,
                     )
+
+                    # Capture token usage from response
+                    if hasattr(response, 'usage') and response.usage:
+                        self._last_usage = {
+                            "prompt_tokens": response.usage.prompt_tokens,
+                            "completion_tokens": response.usage.completion_tokens,
+                            "total_tokens": response.usage.total_tokens
+                        }
 
                     return response.choices[0].message.content or ""
 
@@ -105,9 +120,22 @@ class AuditedOpenAIVanillaSampler(AuditedSamplerBase):
         }
 
     def _get_metadata(self) -> Dict[str, Any]:
-        """Get additional metadata for logging"""
-        return {
+        """Get additional metadata for logging including token usage and cost"""
+        metadata = {
             "provider_type": "vanilla_llm",
             "uses_rag": False,
             "api_endpoint": "chat.completions.create"
         }
+
+        # Add token usage if available
+        if self._last_usage:
+            metadata["token_usage"] = self._last_usage
+            # Calculate cost
+            cost = calculate_cost(
+                self.model,
+                self._last_usage.get("prompt_tokens", 0),
+                self._last_usage.get("completion_tokens", 0)
+            )
+            metadata["estimated_cost_usd"] = cost
+
+        return metadata

@@ -5,13 +5,14 @@ Audited OpenAI RAG Sampler with comprehensive logging
 import os
 import time
 import threading
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from openai import OpenAI
 import openai
 
 from custom_types import MessageList
 from sampler.audited_sampler_base import AuditedSamplerBase
+from pricing_config import calculate_cost
 
 # Global rate limiter for OpenAI RAG API for fair comparison with other providers
 _openai_rag_semaphore = threading.Semaphore(5)  # Max 5 concurrent requests
@@ -24,7 +25,7 @@ class AuditedOpenAIRAGSampler(AuditedSamplerBase):
 
     def __init__(
         self,
-        model: str = "gpt-4.1",  # GPT-4.1
+        model: str = "gpt-5.1",  # GPT-5.1 (SOTA December 2025)
         vector_store_id: str | None = None,
         system_message: str | None = None,
         temperature: float = 0,
@@ -46,6 +47,9 @@ class AuditedOpenAIRAGSampler(AuditedSamplerBase):
                 "or provide vector_store_id parameter."
             )
 
+        # Token usage tracking
+        self._last_usage: Optional[Dict[str, int]] = None
+
     def _pack_message(self, role: str, content: Any):
         """Pack message for OpenAI API format"""
         return {"role": str(role), "content": content}
@@ -66,6 +70,9 @@ class AuditedOpenAIRAGSampler(AuditedSamplerBase):
             if not user_query:
                 raise ValueError("No user message found in message list")
 
+            # Reset usage tracking
+            self._last_usage = None
+
             trial = 0
             while True:
                 try:
@@ -80,6 +87,37 @@ class AuditedOpenAIRAGSampler(AuditedSamplerBase):
                         temperature=self.temperature,
                         max_output_tokens=self.max_tokens
                     )
+
+                    # Capture token usage from Responses API
+                    # Note: GPT-5.1 uses adaptive reasoning - reasoning_tokens are INCLUDED
+                    # in output_tokens, not separate like Gemini's thoughts_tokens
+                    if hasattr(response, 'usage') and response.usage:
+                        input_tokens = getattr(response.usage, 'input_tokens', 0) or 0
+                        output_tokens = getattr(response.usage, 'output_tokens', 0) or 0
+
+                        # Extract detailed token breakdowns for audit transparency
+                        reasoning_tokens = 0
+                        cached_tokens = 0
+
+                        if hasattr(response.usage, 'output_tokens_details'):
+                            otd = response.usage.output_tokens_details
+                            if hasattr(otd, 'reasoning_tokens'):
+                                reasoning_tokens = otd.reasoning_tokens or 0
+
+                        if hasattr(response.usage, 'input_tokens_details'):
+                            itd = response.usage.input_tokens_details
+                            if hasattr(itd, 'cached_tokens'):
+                                cached_tokens = itd.cached_tokens or 0
+
+                        self._last_usage = {
+                            "prompt_tokens": input_tokens,
+                            "completion_tokens": output_tokens,
+                            "total_tokens": input_tokens + output_tokens,
+                            # Additional details for audit (reasoning tokens are INCLUDED in output_tokens)
+                            "reasoning_tokens": reasoning_tokens,  # Part of output_tokens, not additional
+                            "cached_tokens": cached_tokens,  # Could reduce costs (cached = 75% cheaper)
+                            "visible_output_tokens": output_tokens - reasoning_tokens  # Actual response text
+                        }
 
                     # Extract the response content
                     if response.output:
@@ -138,10 +176,23 @@ class AuditedOpenAIRAGSampler(AuditedSamplerBase):
         }
 
     def _get_metadata(self) -> Dict[str, Any]:
-        """Get additional metadata for logging"""
-        return {
+        """Get additional metadata for logging including token usage and cost"""
+        metadata = {
             "provider_type": "rag",
             "uses_rag": True,
             "vector_store_id": self.vector_store_id,
             "api_endpoint": "responses.create"
         }
+
+        # Add token usage if available
+        if self._last_usage:
+            metadata["token_usage"] = self._last_usage
+            # Calculate cost
+            cost = calculate_cost(
+                self.model,
+                self._last_usage.get("prompt_tokens", 0),
+                self._last_usage.get("completion_tokens", 0)
+            )
+            metadata["estimated_cost_usd"] = cost
+
+        return metadata

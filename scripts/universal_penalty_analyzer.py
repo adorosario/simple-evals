@@ -27,7 +27,8 @@ warnings.filterwarnings('ignore')
 PROVIDER_DISPLAY_NAMES = {
     'CustomGPT_RAG': 'CustomGPT',
     'OpenAI_RAG': 'OpenAI RAG',
-    'OpenAI_Vanilla': 'OpenAI Vanilla'
+    'OpenAI_Vanilla': 'OpenAI Vanilla',
+    'Google_Gemini_RAG': 'Google Gemini RAG'
 }
 
 @dataclass
@@ -110,7 +111,8 @@ class UniversalPenaltyAnalyzer:
         mapping = {
             'customgpt': 'CustomGPT_RAG',
             'openai_rag': 'OpenAI_RAG',
-            'openai_vanilla': 'OpenAI_Vanilla'
+            'openai_vanilla': 'OpenAI_Vanilla',
+            'google_gemini_rag': 'Google_Gemini_RAG'
         }
         if provider not in mapping:
             raise ValueError(f"Unknown provider: {provider}. Must be one of: {list(mapping.keys())}")
@@ -223,7 +225,7 @@ class UniversalPenaltyAnalyzer:
 
             # Get competitor results
             competitor_results = {}
-            all_providers = ['CustomGPT_RAG', 'OpenAI_RAG', 'OpenAI_Vanilla']
+            all_providers = ['CustomGPT_RAG', 'OpenAI_RAG', 'OpenAI_Vanilla', 'Google_Gemini_RAG']
             for comp_provider in all_providers:
                 if comp_provider == self.provider_key:
                     continue
@@ -654,13 +656,16 @@ Examples:
 
   # Analyze OpenAI Vanilla failures
   python universal_penalty_analyzer.py --run-dir results/run_XXX --provider openai_vanilla
+
+  # Analyze Google Gemini RAG failures
+  python universal_penalty_analyzer.py --run-dir results/run_XXX --provider google_gemini_rag
         """
     )
     parser.add_argument('--run-dir', required=True, help='Path to evaluation run directory')
     parser.add_argument(
         '--provider',
         required=True,
-        choices=['customgpt', 'openai_rag', 'openai_vanilla'],
+        choices=['customgpt', 'openai_rag', 'openai_vanilla', 'google_gemini_rag'],
         help='Provider to analyze'
     )
     parser.add_argument('--output-dir', default=None, help='Output directory (default: {run_dir}/{provider}_penalty_analysis)')

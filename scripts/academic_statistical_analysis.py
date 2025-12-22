@@ -425,7 +425,10 @@ def generate_statistical_analysis_report(
         provider_pairs = [
             ('customgpt', 'openai_rag'),
             ('customgpt', 'openai_vanilla'),
-            ('openai_rag', 'openai_vanilla')
+            ('customgpt', 'google_gemini_rag'),
+            ('openai_rag', 'openai_vanilla'),
+            ('openai_rag', 'google_gemini_rag'),
+            ('openai_vanilla', 'google_gemini_rag')
         ]
 
         for p1, p2 in provider_pairs:

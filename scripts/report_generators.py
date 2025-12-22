@@ -66,14 +66,19 @@ def generate_quality_benchmark_report_v2(results, output_dir, run_metadata):
     This is the new version that replaces the old inline HTML generation.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_file = os.path.join(output_dir, f"quality_benchmark_report_{timestamp}.html")
+    report_filename = f"quality_benchmark_report_{timestamp}.html"
+    report_file = os.path.join(output_dir, report_filename)
 
     # Build detailed analysis
     successful_results = [r for r in results if r["success"]]
     run_id = run_metadata.get('run_id', '')
 
-    # Scan for available reports for navigation
+    # Scan for available reports for navigation (forensics)
     available_reports = _scan_available_reports(output_dir)
+
+    # Use current report filename for quality link, derive statistical from run_id
+    quality_report_link = report_filename
+    statistical_report_link = f"statistical_analysis_run_{run_id}.html" if run_id else available_reports.get('statistical_analysis')
 
     # Pre-compute values for template (avoid nested f-string issues)
     timestamp_str = format_timestamp()
@@ -91,8 +96,8 @@ def generate_quality_benchmark_report_v2(results, output_dir, run_metadata):
         active_page='quality',
         run_id=run_id,
         base_path="",
-        quality_report=available_reports.get('quality_benchmark'),
-        statistical_report=available_reports.get('statistical_analysis'),
+        quality_report=quality_report_link,
+        statistical_report=statistical_report_link,
         forensic_reports=available_reports.get('forensics', {})
     )}
 
@@ -260,6 +265,78 @@ def generate_quality_benchmark_report_v2(results, output_dir, run_metadata):
                 </table>
             </div>
 
+            <!-- Performance & Cost Analysis -->
+            <h2 class="section-header">
+                <i class="fas fa-tachometer-alt me-2"></i>Performance & Cost Analysis
+            </h2>
+
+            <div class="info-box">
+                <p>
+                    <strong>Why track latency and cost?</strong> These metrics ensure benchmark fairness by
+                    verifying providers aren't using slower "thinking" models or spending disproportionate
+                    compute resources. Similar performance profiles indicate equivalent model capabilities.
+                </p>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>Provider</th>
+                            <th><i class="fas fa-clock me-1"></i>Avg Latency</th>
+                            <th>P95 Latency</th>
+                            <th><i class="fas fa-coins me-1"></i>Total Cost</th>
+                            <th>Avg Cost/Request</th>
+                            <th><i class="fas fa-layer-group me-1"></i>Avg Tokens</th>
+                        </tr>
+                    </thead>
+                    <tbody>"""
+
+    # Add performance data for each provider
+    for result in sorted_results:
+        provider_name = result["sampler_name"]
+        metrics = result["metrics"]
+        provider_badge_class = get_provider_badge_class(provider_name)
+
+        # Latency metrics
+        latency_avg = metrics.get('provider_latency_avg_ms')
+        latency_p95 = metrics.get('provider_latency_p95_ms')
+        latency_avg_str = f"{latency_avg:,.0f}ms" if latency_avg else "N/A"
+        latency_p95_str = f"{latency_p95:,.0f}ms" if latency_p95 else "N/A"
+
+        # Cost metrics
+        total_cost = metrics.get('total_cost_usd')
+        avg_cost = metrics.get('avg_cost_per_request_usd')
+        total_cost_str = f"${total_cost:.6f}" if total_cost else "N/A*"
+        avg_cost_str = f"${avg_cost:.8f}" if avg_cost else "N/A*"
+
+        # Token metrics
+        avg_tokens = metrics.get('avg_tokens_per_request')
+        avg_tokens_str = f"{avg_tokens:,.0f}" if avg_tokens else "N/A"
+
+        html += f"""
+                        <tr>
+                            <td><span class="{provider_badge_class}">{provider_name}</span></td>
+                            <td>{latency_avg_str}</td>
+                            <td>{latency_p95_str}</td>
+                            <td>{total_cost_str}</td>
+                            <td>{avg_cost_str}</td>
+                            <td>{avg_tokens_str}</td>
+                        </tr>"""
+
+    html += """
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="alert alert-info">
+                <small>
+                    <strong>*N/A:</strong> CustomGPT uses subscription pricing rather than per-token billing,
+                    so per-request cost metrics are not applicable. This is academically honest reporting
+                    of differing billing models across providers.
+                </small>
+            </div>
+
             <!-- Key Findings -->
             <h2 class="section-header">
                 <i class="fas fa-lightbulb me-2"></i>Key Findings
@@ -325,6 +402,217 @@ def generate_quality_benchmark_report_v2(results, output_dir, run_metadata):
     return report_file
 
 
+def _render_statistical_content(analysis_data):
+    """
+    Render the statistical analysis data as HTML content.
+
+    Handles the actual data structure from analyze_statistical_significance():
+    - pairwise_comparisons: Dict of comparison results
+    - effect_sizes: Dict of Cohen's d effect sizes
+    - grade_distribution_tests: Chi-square results
+    - summary: Summary statistics
+    """
+    html_parts = []
+
+    # Extract summary
+    summary = analysis_data.get('summary', {})
+    pairwise = analysis_data.get('pairwise_comparisons', {})
+    effects = analysis_data.get('effect_sizes', {})
+    distributions = analysis_data.get('grade_distribution_tests', {})
+
+    # Summary Statistics Section
+    html_parts.append("""
+    <h3 class="mt-4"><i class="fas fa-chart-pie me-2"></i>Summary Statistics</h3>
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead class="table-dark">
+                <tr>
+                    <th>Metric</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+    """)
+
+    summary_items = [
+        ("Total Pairwise Comparisons", summary.get('total_comparisons', 'N/A')),
+        ("Total Statistical Tests", summary.get('total_statistical_tests', 'N/A')),
+        ("Bonferroni Corrected α", f"{summary.get('bonferroni_corrected_alpha', 0):.4f}"),
+        ("Significant Volume Differences (Raw)", summary.get('significant_volume_comparisons_raw', 0)),
+        ("Significant Volume Differences (Corrected)", summary.get('significant_volume_comparisons_corrected', 0)),
+        ("Significant Quality Differences (Raw)", summary.get('significant_quality_comparisons_raw', 0)),
+        ("Significant Quality Differences (Corrected)", summary.get('significant_quality_comparisons_corrected', 0)),
+        ("Significant Distribution Differences (Raw)", summary.get('significant_distribution_comparisons_raw', 0)),
+        ("Significant Distribution Differences (Corrected)", summary.get('significant_distribution_comparisons_corrected', 0)),
+        ("Large Effect Sizes Detected", summary.get('large_effect_sizes', 0)),
+        ("Medium Effect Sizes Detected", summary.get('medium_effect_sizes', 0)),
+    ]
+
+    for label, value in summary_items:
+        html_parts.append(f"""
+                <tr>
+                    <td>{label}</td>
+                    <td><strong>{value}</strong></td>
+                </tr>
+        """)
+
+    html_parts.append("""
+            </tbody>
+        </table>
+    </div>
+    """)
+
+    # Pairwise Comparisons Section
+    if pairwise:
+        html_parts.append("""
+        <h3 class="mt-5"><i class="fas fa-exchange-alt me-2"></i>Pairwise Comparisons</h3>
+        <p class="text-muted">T-tests comparing Volume and Quality scores between providers.
+        Significance at α=0.05 (raw) and Bonferroni-corrected α.</p>
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Comparison</th>
+                        <th>Metric</th>
+                        <th>Mean 1</th>
+                        <th>Mean 2</th>
+                        <th>t-statistic</th>
+                        <th>p-value</th>
+                        <th>Significant</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """)
+
+        for comparison_key, comparison_data in pairwise.items():
+            providers = comparison_key.replace('_vs_', ' vs ')
+
+            for metric_key in ['volume_score', 'quality_score']:
+                metric_data = comparison_data.get(metric_key, {})
+                metric_name = metric_data.get('metric', metric_key.replace('_', ' ').title())
+                mean1 = metric_data.get('mean1', 0)
+                mean2 = metric_data.get('mean2', 0)
+                t_stat = metric_data.get('t_statistic')
+                p_val = metric_data.get('p_value')
+                significant = metric_data.get('significant', False)
+
+                t_stat_str = f"{t_stat:.3f}" if t_stat is not None else "N/A"
+                p_val_str = f"{p_val:.4f}" if p_val is not None else "N/A"
+                sig_badge = '<span class="badge bg-success">Yes</span>' if significant else '<span class="badge bg-secondary">No</span>'
+
+                html_parts.append(f"""
+                    <tr>
+                        <td><code>{providers}</code></td>
+                        <td>{metric_name}</td>
+                        <td>{mean1:.3f}</td>
+                        <td>{mean2:.3f}</td>
+                        <td>{t_stat_str}</td>
+                        <td>{p_val_str}</td>
+                        <td>{sig_badge}</td>
+                    </tr>
+                """)
+
+        html_parts.append("""
+                </tbody>
+            </table>
+        </div>
+        """)
+
+    # Effect Sizes Section
+    if effects:
+        html_parts.append("""
+        <h3 class="mt-5"><i class="fas fa-ruler me-2"></i>Effect Sizes (Cohen's d)</h3>
+        <p class="text-muted">Effect size interpretation: |d| < 0.2 = negligible, 0.2-0.5 = small, 0.5-0.8 = medium, > 0.8 = large</p>
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Comparison</th>
+                        <th>Volume Score d</th>
+                        <th>Volume Interpretation</th>
+                        <th>Quality Score d</th>
+                        <th>Quality Interpretation</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """)
+
+        for comparison_key, effect_data in effects.items():
+            providers = comparison_key.replace('_vs_', ' vs ')
+            vol_d = effect_data.get('volume_score_cohens_d', 0)
+            vol_interp = effect_data.get('volume_score_interpretation', 'N/A')
+            qual_d = effect_data.get('quality_score_cohens_d', 0)
+            qual_interp = effect_data.get('quality_score_interpretation', 'N/A')
+
+            vol_d_str = f"{vol_d:.3f}" if vol_d is not None else "N/A"
+            qual_d_str = f"{qual_d:.3f}" if qual_d is not None else "N/A"
+
+            html_parts.append(f"""
+                <tr>
+                    <td><code>{providers}</code></td>
+                    <td>{vol_d_str}</td>
+                    <td><span class="badge bg-info">{vol_interp}</span></td>
+                    <td>{qual_d_str}</td>
+                    <td><span class="badge bg-info">{qual_interp}</span></td>
+                </tr>
+            """)
+
+        html_parts.append("""
+                </tbody>
+            </table>
+        </div>
+        """)
+
+    # Grade Distribution Tests Section
+    if distributions:
+        html_parts.append("""
+        <h3 class="mt-5"><i class="fas fa-chart-bar me-2"></i>Grade Distribution Tests (Chi-Square)</h3>
+        <p class="text-muted">Chi-square tests comparing grade distributions (Correct/Incorrect/Abstained) between providers.</p>
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Comparison</th>
+                        <th>Chi² Statistic</th>
+                        <th>p-value</th>
+                        <th>Significant</th>
+                        <th>Cramér's V</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """)
+
+        for comparison_key, dist_data in distributions.items():
+            providers = comparison_key.replace('_vs_', ' vs ')
+            chi2 = dist_data.get('chi2_statistic')
+            p_val = dist_data.get('p_value')
+            significant = dist_data.get('significant', False)
+            cramers_v = dist_data.get('cramers_v')
+
+            chi2_str = f"{chi2:.3f}" if chi2 is not None else "N/A"
+            p_val_str = f"{p_val:.4f}" if p_val is not None else "N/A"
+            cramers_str = f"{cramers_v:.3f}" if cramers_v is not None else "N/A"
+            sig_badge = '<span class="badge bg-success">Yes</span>' if significant else '<span class="badge bg-secondary">No</span>'
+
+            html_parts.append(f"""
+                <tr>
+                    <td><code>{providers}</code></td>
+                    <td>{chi2_str}</td>
+                    <td>{p_val_str}</td>
+                    <td>{sig_badge}</td>
+                    <td>{cramers_str}</td>
+                </tr>
+            """)
+
+        html_parts.append("""
+                </tbody>
+            </table>
+        </div>
+        """)
+
+    return '\n'.join(html_parts)
+
+
 def generate_statistical_analysis_report_v2(output_dir, run_id, analysis_data):
     """
     Generate statistical analysis report using unified brand kit.
@@ -332,9 +620,34 @@ def generate_statistical_analysis_report_v2(output_dir, run_id, analysis_data):
     Args:
         output_dir: Directory to write report
         run_id: Run identifier
-        analysis_data: Dictionary with statistical analysis results
+        analysis_data: Dictionary with statistical analysis results from analyze_statistical_significance()
     """
     report_file = os.path.join(output_dir, f"statistical_analysis_run_{run_id}.html")
+
+    # Scan for available reports in the output directory
+    available_reports = _scan_available_reports(output_dir)
+
+    # Extract provider count from pairwise comparisons or summary
+    pairwise = analysis_data.get('pairwise_comparisons', {})
+    summary = analysis_data.get('summary', {})
+
+    # Count unique providers from comparison keys
+    providers_seen = set()
+    for key in pairwise.keys():
+        parts = key.split('_vs_')
+        providers_seen.update(parts)
+    provider_count = len(providers_seen) if providers_seen else analysis_data.get('provider_count', 'N/A')
+
+    # Get question count from summary or data
+    question_count = summary.get('total_questions') or analysis_data.get('question_count', 'N/A')
+
+    # Render the statistical content from actual data structure
+    if 'html_content' in analysis_data:
+        html_content = analysis_data['html_content']
+    elif pairwise or summary:
+        html_content = _render_statistical_content(analysis_data)
+    else:
+        html_content = '<p>No analysis data available</p>'
 
     html = get_html_head(
         title="Why RAGs Hallucinate - Statistical Analysis",
@@ -343,7 +656,13 @@ def generate_statistical_analysis_report_v2(output_dir, run_id, analysis_data):
 
     html += f"""
 <body>
-    {get_navigation_bar(active_page='statistical', run_id=run_id)}
+    {get_navigation_bar(
+        active_page='statistical',
+        run_id=run_id,
+        quality_report=available_reports.get('quality_benchmark'),
+        statistical_report=f"statistical_analysis_run_{run_id}.html",
+        forensic_reports=available_reports.get('forensics')
+    )}
 
     <div class="main-container">
         {get_page_header(
@@ -359,14 +678,14 @@ def generate_statistical_analysis_report_v2(output_dir, run_id, analysis_data):
 
             <div class="info-box">
                 <p><strong>Statistical Methodology:</strong> Wilson Score Confidence Intervals (95% CI) for binomial proportions,
-                conservative significance testing via CI overlap.</p>
-                <p><strong>Benchmark Configuration:</strong> {analysis_data.get('provider_count', 'N/A')} providers evaluated
-                on {analysis_data.get('question_count', 'N/A')} questions at 80% confidence threshold.</p>
+                conservative significance testing via CI overlap, and Bonferroni correction for multiple comparisons.</p>
+                <p><strong>Benchmark Configuration:</strong> {provider_count} providers evaluated
+                at 80% confidence threshold.</p>
             </div>
 
             <!-- Analysis Content -->
             <div class="mt-4">
-                {analysis_data.get('html_content', '<p>No analysis data available</p>')}
+                {html_content}
             </div>
 
             <!-- Footer -->
@@ -567,7 +886,7 @@ def generate_forensic_question_report_v2(question_data, provider, output_file, r
     provider_grade = question_data.get(f'{provider_key}_grade', 'F')
 
     # Get competitive data
-    competitors = ['customgpt', 'openai_rag', 'openai_vanilla']
+    competitors = ['customgpt', 'openai_rag', 'openai_vanilla', 'google_gemini_rag']
     competitors = [c for c in competitors if c != provider_key]
 
     html = get_html_head(

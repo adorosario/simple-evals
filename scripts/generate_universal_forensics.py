@@ -41,14 +41,16 @@ from brand_kit import (
 PROVIDER_DISPLAY_NAMES = {
     'customgpt': 'CustomGPT',
     'openai_rag': 'OpenAI RAG',
-    'openai_vanilla': 'OpenAI Vanilla'
+    'openai_vanilla': 'OpenAI Vanilla',
+    'google_gemini_rag': 'Google Gemini RAG'
 }
 
 # Provider keys for audit log lookup
 PROVIDER_KEYS = {
     'customgpt': 'CustomGPT_RAG',
     'openai_rag': 'OpenAI_RAG',
-    'openai_vanilla': 'OpenAI_Vanilla'
+    'openai_vanilla': 'OpenAI_Vanilla',
+    'google_gemini_rag': 'Google_Gemini_RAG'
 }
 
 # Citation content cache to avoid redundant API calls
@@ -1142,7 +1144,7 @@ Examples:
     parser.add_argument(
         '--provider',
         required=True,
-        choices=['customgpt', 'openai_rag', 'openai_vanilla'],
+        choices=['customgpt', 'openai_rag', 'openai_vanilla', 'google_gemini_rag'],
         help='Provider to generate forensics for'
     )
 

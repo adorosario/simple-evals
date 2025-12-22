@@ -1,136 +1,180 @@
-# Overview
-This repository contains a lightweight library for evaluating language models.
-We are open sourcing it so we can be transparent about the accuracy numbers we're publishing alongside our latest models.
+# SimpleQA RAG Benchmark
 
-## 🆕 NEW: RAG Benchmark Framework
-**Version 1.1.0** introduces a comprehensive RAG (Retrieval-Augmented Generation) benchmarking framework that compares RAG-enabled models against standard LLMs using the SimpleQA evaluation dataset.
+A confidence threshold RAG benchmark framework for evaluating factual question-answering accuracy across multiple providers. Implements OpenAI's penalty-aware scoring methodology from ["Why Language Models Hallucinate"](https://openai.com/index/why-language-models-hallucinate/) (arXiv:2509.04664v1).
 
-### Quick Start with Docker
+**Version:** 3.0.0
+
+## Quick Start
+
 ```bash
-# Setup environment
-cp .env.example .env  # Add your API keys
+# 1. Clone and configure
+git clone <repo>
+cd simple-evals
+cp .env.example .env
+# Edit .env with your API keys (see Environment Variables below)
 
-# Test RAG vs OpenAI comparison (5 questions)
-docker compose run --rm simple-evals python rag_benchmark.py --debug
+# 2. Run benchmark (5-question debug mode)
+docker compose run --rm simple-evals python scripts/confidence_threshold_benchmark.py --debug
 
-# Full benchmark (100+ questions)
-docker compose run --rm simple-evals python rag_benchmark.py --examples 100
+# 3. Open results
+# Results saved to results/run_YYYYMMDD_HHMMSS/index.html
 ```
-
-### Key Features
-- **Side-by-side RAG comparison**: CustomGPT (with RAG) vs OpenAI GPT-4o (without RAG)
-- **Automated evaluation**: Uses GPT-4o as judge for consistent grading
-- **Docker environment**: Complete containerized setup with live code development
-- **Comprehensive reporting**: HTML reports with detailed metrics and comparisons
-- **Proven results**: RAG demonstrates significant accuracy improvements on factual questions
-
-📖 **Documentation**: See [`DOCKER_SETUP.md`](DOCKER_SETUP.md) for detailed setup instructions.
 
 ## Benchmark Results
 
-| Model                        | Prompt        | MMLU   | GPQA   | MATH   | HumanEval | MGSM[^5] | DROP[^5]<br>(F1, 3-shot) | SimpleQA 
-|:----------------------------:|:-------------:|:------:|:------:|:------:|:---------:|:------:|:--------------------------:|:---------:| 
-| **o1**                       |               |        |        | MATH-500[^6] |          |        |                           |          
-| o1-preview                   | n/a[^7]       |  90.8  |  73.3  |  85.5  | **`92.4`** |  90.8  |  74.8                      | **`42.4`** | 
-| o1-mini                      | n/a           |  85.2  |  60.0  |  90.0  | **`92.4`** |  89.9  |  83.9                      | 7.6        |  
-| o1 (work in progress)        | n/a           | **`92.3`** | **`77.3`** | **`94.8`** |   n/a    |   n/a  |   n/a            |   n/a 
-| **GPT-4o**                   |               |        |        |        |           |        |                        |
-| gpt-4o-2024-11-20            | assistant     |  85.7  |  46.0  |  68.5  |   90.2    |  90.3  |  81.5                       | 38.8       |  
-| gpt-4o-2024-08-06            | assistant[^2] |  88.7  |  53.1  |  75.9  |   90.2    |  90.0  |  79.8                       | 40.1       |  
-| gpt-4o-2024-05-13            | assistant     |  87.2  |  49.9  |  76.6  |   91.0    |  89.9  |  83.7                       | 39.0       |
-| gpt-4o-mini-2024-07-18       | assistant     |  82.0  |  40.2  |  70.2  |   87.2    |  87.0  |  79.7                       | 9.5        | 
-| **GPT-4 Turbo and GPT-4**     |               |        |        |        |           |        |                            |
-| gpt-4-turbo-2024-04-09       | assistant     |  86.7  |  49.3  |  73.4  |   88.2    |  89.6  |  86.0                       | 24.2       |
-| gpt-4-0125-preview           | assistant     |  85.4  |  41.4  |  64.5  |   86.6    |  85.1  |  81.5                       | n/a 
-| gpt-4-1106-preview           | assistant     |  84.7  |  42.5  |  64.3  |   83.7    |  87.1  |  83.2                       | n/a 
-| **Other Models (Reported)**   |               |        |        |        |           |        |                            |
-| [Claude 3.5 Sonnet](https://www.anthropic.com/news/claude-3-5-sonnet) | unknown |  88.3  |  59.4  |  71.1  |   92.0    | **`91.6`** | **`87.1`** |  28.9 | 
-| [Claude 3 Opus](https://www.anthropic.com/news/claude-3-family) | unknown |  86.8  |  50.4  |  60.1  |   84.9    |   90.7   |  83.1 |  23.5 |                   
-| [Llama 3.1 405b](https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/MODEL_CARD.md) | unknown |  88.6  |  50.7  |  73.8  |   89.0    | **`91.6`** |  84.8                   | n/a 
-| [Llama 3.1 70b](https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/MODEL_CARD.md) | unknown |  82.0  |  41.7  |  68.0  |   80.5    |  86.9  |  79.6                   | n/a 
-| [Llama 3.1 8b](https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/MODEL_CARD.md) | unknown |  68.4  |  30.4  |  51.9  |   72.6    |  68.9  |  59.5                   | n/a 
-| [Grok 2](https://x.ai/blog/grok-2) | unknown | 87.5 | 56.0 | 76.1 | 88.4 | n/a | n/a | n/a 
-| [Grok 2 mini](https://x.ai/blog/grok-2) | unknown | 86.2 | 51.0 | 73.0 | 85.7 | n/a | n/a | n/a 
-| [Gemini 1.0 Ultra](https://goo.gle/GeminiV1-5) | unknown | 83.7 | n/a | 53.2 | 74.4 | 79.0 | 82.4 | n/a 
-| [Gemini 1.5 Pro](https://goo.gle/GeminiV1-5) | unknown | 81.9 | n/a | 58.5 | 71.9 | 88.7 | 78.9 | n/a 
-| [Gemini 1.5 Flash](https://goo.gle/GeminiV1-5) | unknown | 77.9 | 38.6 | 40.9 | 71.5 | 75.5 | 78.4 | n/a 
+100-sample benchmark using SimpleQA-Verified dataset (December 2025):
 
-## Background
+| Provider | Accuracy | Avg Latency | Cost/Query | Quality Score |
+|----------|----------|-------------|------------|---------------|
+| CustomGPT_RAG | **97.8%** | 3,642ms | $0.10 | Best |
+| Google_Gemini_RAG | 94.7% | 25,068ms | $0.007 | High |
+| OpenAI_RAG | 89.0% | 8,648ms | $0.023 | Medium |
+| OpenAI_Vanilla | 37.9%* | 2,210ms | $0.0002 | Low |
 
-Evals are sensitive to prompting, and there's significant variation in the formulations used in recent publications and libraries.
-Some use few-shot prompts or role playing prompts ("You are an expert software programmer...").
-These approaches are carryovers from evaluating *base models* (rather than instruction/chat-tuned models) and from models that were worse at following instructions.
+*OpenAI Vanilla lacks RAG context; abstains on 42% of questions.
 
-For this library, we are emphasizing the *zero-shot, chain-of-thought* setting, with simple instructions like "Solve the following multiple choice problem". We believe that this prompting technique is a better reflection of the models' performance in realistic usage.
+**Models:** GPT-5.1 (OpenAI providers), Gemini 3 Pro Preview (Google)
+**Judge:** GPT-5.1 with 80% confidence threshold
 
-**We will not be actively maintaining this repository and monitoring PRs and Issues.** In particular, we're not accepting new evals. Here are the changes we might accept.
-- Bug fixes (hopefully not needed!)
-- Adding adapters for new models
-- Adding new rows to the table below with eval results, given new models and new system prompts.
+### Provider Selection Guide
 
-This repository is NOT intended as a replacement for https://github.com/openai/evals, which is designed to be a comprehensive collection of a large number of evals.
+| Use Case | Best Provider | Why |
+|----------|---------------|-----|
+| Production RAG | CustomGPT | Best accuracy + consistent latency |
+| Budget-conscious | Gemini RAG | Lowest cost per correct answer |
+| Enterprise/Volume | OpenAI RAG | Predictable scaling |
+| Quick Prototyping | OpenAI Vanilla | Simplest integration |
 
-## Evals
+## Key Features
 
-This repository currently contains the following evals:
+- **4 RAG Providers:** CustomGPT, OpenAI RAG, OpenAI Vanilla, Google Gemini RAG
+- **Penalty-Aware Scoring:** Based on OpenAI's research (Correct=+1, Wrong=-4, Abstain=0)
+- **80% Confidence Threshold:** Optimal balance between volume and quality strategies
+- **Complete Audit Trail:** Full traceability of all API calls, judge decisions, and evaluations
+- **Publication-Ready Reports:** Apple-inspired HTML dashboards with statistical analysis
+- **Cost & Latency Tracking:** Per-request metrics with aggregated statistics
 
-- MMLU: Measuring Massive Multitask Language Understanding, reference: https://arxiv.org/abs/2009.03300, https://github.com/hendrycks/test, [MIT License](https://github.com/hendrycks/test/blob/master/LICENSE)
-- MATH: Measuring Mathematical Problem Solving With the MATH Dataset, reference: https://arxiv.org/abs/2103.03874, https://github.com/hendrycks/math, [MIT License](https://github.com/idavidrein/gpqa/blob/main/LICENSE)
-- GPQA: A Graduate-Level Google-Proof Q&A Benchmark, reference: https://arxiv.org/abs/2311.12022, https://github.com/idavidrein/gpqa/,  [MIT License](https://github.com/idavidrein/gpqa/blob/main/LICENSE)
-- DROP: A Reading Comprehension Benchmark Requiring Discrete Reasoning Over Paragraphs, reference: https://arxiv.org/abs/1903.00161, https://allenai.org/data/drop, [Apache License 2.0](https://github.com/allenai/allennlp-models/blob/main/LICENSE)
-- MGSM: Multilingual Grade School Math Benchmark (MGSM), Language Models are Multilingual Chain-of-Thought Reasoners, reference: https://arxiv.org/abs/2210.03057, https://github.com/google-research/url-nlp, [Creative Commons Attribution 4.0 International Public License (CC-BY)](https://github.com/google-research/url-nlp/blob/main/LICENSE)
-- HumanEval: Evaluating Large Language Models Trained on Code, reference https://arxiv.org/abs/2107.03374, https://github.com/openai/human-eval, [MIT License](https://github.com/openai/human-eval/blob/master/LICENSE)
+## Architecture
 
-## Samplers
-
-We have implemented sampling interfaces for the following language model APIs:
-
-- OpenAI: https://platform.openai.com/docs/overview
-- Claude: https://www.anthropic.com/api
-
-Make sure to set the `*_API_KEY` environment variables before using these APIs.
-
-## Setup
-
-Due to the optional dependencies, we're not providing a unified setup mechanism. Instead, we're providing instructions for each eval and sampler.
-
-For [HumanEval](https://github.com/openai/human-eval/) (python programming)
-```bash
-git clone https://github.com/openai/human-eval
-pip install -e human-eval
+```
+confidence_threshold_benchmark.py          # Entry point
+    |
+    +-- Audited Samplers (sampler/audited_*.py)
+    |       +-- CustomGPT RAG
+    |       +-- OpenAI RAG (vector store)
+    |       +-- OpenAI Vanilla (baseline)
+    |       +-- Gemini RAG (file search)
+    |
+    +-- Evaluation Pipeline (confidence_threshold_simpleqa_eval.py)
+    |       +-- Intent Classification (GPT-5-nano)
+    |       +-- Judge Grading (GPT-5.1)
+    |       +-- Penalty Calculation
+    |
+    +-- Report Generation
+            +-- Brand Kit (brand_kit.py)
+            +-- HTML Dashboards
+            +-- Audit Logs (JSONL)
 ```
 
-For the [OpenAI API](https://pypi.org/project/openai/):
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed documentation.
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and configure:
+
+**Required:**
 ```bash
-pip install openai
+OPENAI_API_KEY=sk-...          # OpenAI models + LLM-as-Judge
+OPENAI_VECTOR_STORE_ID=vs_...  # Pre-built vector store for OpenAI RAG
 ```
 
-For the [Anthropic API](https://docs.anthropic.com/claude/docs/quickstart-guide):
+**Provider-Specific:**
 ```bash
-pip install anthropic
+CUSTOMGPT_API_KEY=...          # CustomGPT RAG
+CUSTOMGPT_PROJECT=...          # CustomGPT project ID
+
+GEMINI_API_KEY=...             # Google Gemini RAG
+GOOGLE_FILE_SEARCH_STORE_NAME=...  # Gemini file search store
 ```
 
-## Running the evals
+**Optional:**
 ```bash
-python -m simple_evals --list-models
+ANTHROPIC_API_KEY=...          # Claude models
+SCRAPINGBEE_API_KEY=...        # Web scraping for KB building
 ```
-This will list all the models that you can evaluate.
 
-To run the evaluations, you can use the following command:
+## Commands
+
+All commands run in Docker (no local Python required):
+
 ```bash
-python -m simple_evals --model <model_name> --examples <num_examples>
+# Benchmark
+docker compose run --rm simple-evals python scripts/confidence_threshold_benchmark.py --debug      # 5 questions
+docker compose run --rm simple-evals python scripts/confidence_threshold_benchmark.py              # 10 questions
+docker compose run --rm simple-evals python scripts/confidence_threshold_benchmark.py --examples 100  # Custom count
+docker compose run --rm simple-evals python scripts/confidence_threshold_benchmark.py --flex-tier  # 50% cost savings
+
+# Tests
+docker compose run --rm simple-evals python -m pytest tests/ -v
+
+# Services
+docker compose up api-server     # FastAPI on port 8000
+docker compose run --rm shell    # Interactive shell
 ```
-This will launch evaluations through the OpenAI API.
 
-## Notes
+## Results Structure
 
-[^1]:chatgpt system message: "You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2023-12\nCurrent date: 2024-04-01"
-[^2]:assistant system message in [OpenAI API doc](https://platform.openai.com/docs/api-reference/introduction): "You are a helpful assistant." .
-[^3]:claude-3 empty system message: suggested by Anthropic API doc, and we have done limited experiments due to [rate limit](https://docs.anthropic.com/claude/reference/rate-limits) issues, but we welcome PRs with alternative choices.
-[^4]:claude-3 lmsys system message: system message in LMSYS [Fast-chat open source code](https://github.com/lm-sys/FastChat/blob/7899355ebe32117fdae83985cf8ee476d2f4243f/fastchat/conversation.py#L894): "The assistant is Claude, created by Anthropic. The current date is {{currentDateTime}}. Claude's knowledge base was last updated ... ". We have done limited experiments due to [rate limit](https://docs.anthropic.com/claude/reference/rate-limits) issues, but we welcome PRs with alternative choices.
-[^5]:We believe these evals are saturated for our newer models, but are reporting them for completeness.
-[^6]:For o1 models, we evaluate on [MATH-500](https://github.com/openai/prm800k/tree/main/prm800k/math_splits), which is a newer, IID version of MATH.
-[^7]:o1 models do not support using a system prompt.
+```
+results/run_YYYYMMDD_HHMMSS/
++-- index.html                    # Main dashboard hub
++-- quality_benchmark_report.html # Provider comparison
++-- statistical_analysis_report.html
++-- quality_benchmark_results.json
++-- provider_requests.jsonl       # Audit: all API calls
++-- judge_evaluations.jsonl       # Audit: all grades
++-- abstention_classifications.jsonl
++-- <provider>_penalty_analysis/  # Forensic reports
+```
 
-## Legal Stuff
-By contributing to evals, you are agreeing to make your evaluation logic and data under the same MIT license as this repository. You must have adequate rights to upload any data used in an eval. OpenAI reserves the right to use this data in future service improvements to our product. Contributions to OpenAI evals will be subject to our usual Usage Policies: https://platform.openai.com/docs/usage-policies.
+## Documentation
+
+- [Quick Start Guide](docs/QUICKSTART.md) - 5-minute setup
+- [Architecture Overview](docs/ARCHITECTURE.md) - System design
+- [RAG Performance Comparison](docs/RAG_PERFORMANCE_COMPARISON.md) - Provider analysis
+- [Latency Analysis](docs/LATENCY_ANALYSIS_BY_PROVIDER.md) - Performance deep-dive
+- [Cost Calculation - Gemini](docs/GOOGLE_GEMINI_COST_CALCULATION.md)
+- [Cost Calculation - OpenAI](docs/OPENAI_RAG_COST_CALCULATION.md)
+- [Knowledge Base Design](simpleqa-verified/KNOWLEDGE_BASE_DESIGN.md)
+
+See [docs/README.md](docs/README.md) for complete documentation index.
+
+## Dataset
+
+Uses **SimpleQA-Verified**: 1,000 curated factual questions with 97.4% answer coverage in knowledge base.
+
+- Source: OpenAI SimpleQA (Wei et al., 2024), curated by DeepMind/Google Research
+- Topics: Politics, Science, Art, Geography, History, Music, Sports
+- Knowledge base: 1,000 documents, 27.6M words total
+
+## Development
+
+This is a Docker-only environment. See [CLAUDE.md](CLAUDE.md) for development instructions.
+
+## Research Foundation
+
+This benchmark implements the confidence threshold methodology from:
+
+> **"Why Language Models Hallucinate"** (arXiv:2509.04664v1)
+> OpenAI Research, 2025
+>
+> Key insight: Using an 80% confidence threshold with penalty-aware scoring
+> (wrong answers = -4 points) better evaluates RAG system quality than
+> traditional accuracy metrics.
+
+## License
+
+MIT License. See original [OpenAI simple-evals](https://github.com/openai/simple-evals) repository.
+
+---
+
+*Generated with the SimpleQA RAG Benchmark Framework v3.0.0*
