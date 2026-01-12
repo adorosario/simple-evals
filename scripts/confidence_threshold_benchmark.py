@@ -140,19 +140,23 @@ def setup_samplers(audit_logger=None):
     return samplers, errors
 
 
-def run_quality_evaluation(sampler_name, sampler, n_samples=10, audit_logger=None, use_flex_tier=False):
+def run_quality_evaluation(sampler_name, sampler, n_samples=10, audit_logger=None, use_flex_tier=False, question_ids=None):
     """Run quality-based evaluation for a single sampler"""
     print(f"\n🎯 Running quality-based evaluation for {sampler_name}...")
-    print(f"   Samples: {n_samples}")
+    if question_ids:
+        print(f"   Questions: {len(question_ids)} specific IDs")
+    else:
+        print(f"   Samples: {n_samples}")
     print(f"   Methodology: 80% confidence threshold")
 
     try:
         # Create quality evaluation
         eval_instance = ConfidenceThresholdSimpleQAEval(
             grader_model=None,  # Uses GPT-5 (with optional flex tier)
-            num_examples=n_samples,
+            num_examples=n_samples if not question_ids else None,
             audit_logger=audit_logger,
-            use_flex_tier=use_flex_tier
+            use_flex_tier=use_flex_tier,
+            question_ids=question_ids
         )
 
         start_time = time.time()
@@ -248,7 +252,7 @@ def run_quality_evaluation(sampler_name, sampler, n_samples=10, audit_logger=Non
         }
 
 
-def run_parallel_quality_evaluations(samplers: Dict[str, Any], n_samples: int, audit_logger: AuditLogger, max_workers: int = 8, use_flex_tier: bool = False) -> List[Dict[str, Any]]:
+def run_parallel_quality_evaluations(samplers: Dict[str, Any], n_samples: int, audit_logger: AuditLogger, max_workers: int = 8, use_flex_tier: bool = False, question_ids: List[str] = None) -> List[Dict[str, Any]]:
     """Run quality-based evaluations in parallel across providers"""
     print(f"\n🏃 Running parallel quality evaluations with {max_workers} workers...")
 
@@ -263,7 +267,8 @@ def run_parallel_quality_evaluations(samplers: Dict[str, Any], n_samples: int, a
                 sampler,
                 n_samples,
                 audit_logger,
-                use_flex_tier
+                use_flex_tier,
+                question_ids
             ): sampler_name
             for sampler_name, sampler in samplers.items()
         }
@@ -719,6 +724,34 @@ def generate_quality_benchmark_report(results, output_dir, run_metadata):
 
 
 
+def load_question_ids_from_file(file_path: str) -> List[str]:
+    """Load question IDs from a file (one ID per line or CSV with question_id column)"""
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Question IDs file not found: {file_path}")
+
+    question_ids = []
+
+    if path.suffix == '.csv':
+        # CSV file - look for question_id column
+        import csv
+        with open(path, newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                qid = row.get('question_id')
+                if qid:
+                    question_ids.append(qid.strip())
+    else:
+        # Plain text file - one ID per line
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):  # Skip empty lines and comments
+                    question_ids.append(line)
+
+    return question_ids
+
+
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
@@ -729,6 +762,12 @@ def parse_args():
         type=int,
         default=None,
         help="Number of examples to test (default: 10 for normal, 5 for debug)"
+    )
+    parser.add_argument(
+        "--question-ids-file",
+        type=str,
+        default=None,
+        help="Path to file with specific question IDs to test (CSV or one ID per line)"
     )
     parser.add_argument(
         "--debug",
@@ -770,6 +809,13 @@ def main():
     output_dir = args.output_dir
     dry_run = args.dry_run
     use_flex_tier = args.flex_tier
+    question_ids_file = args.question_ids_file
+
+    # Load question IDs from file if specified
+    question_ids = None
+    if question_ids_file:
+        question_ids = load_question_ids_from_file(question_ids_file)
+        print(f"✓ Loaded {len(question_ids)} question IDs from {question_ids_file}")
 
     print("🏆 RAG PROVIDER QUALITY BENCHMARK")
     print("=" * 70)
@@ -788,8 +834,11 @@ def main():
     print("Quality Methodology: 80% confidence threshold, penalty ratio 4.0")
     print("=" * 70)
 
-    # Configuration
-    if args.examples is not None:
+    # Configuration - use question_ids length if provided, otherwise use args
+    if question_ids:
+        n_samples = len(question_ids)
+        print(f"📋 Using {n_samples} specific question IDs from file")
+    elif args.examples is not None:
         n_samples = args.examples
     elif args.debug:
         n_samples = 5
@@ -863,7 +912,7 @@ def main():
         return 0
 
     # Run evaluations (parallel across providers)
-    results = run_parallel_quality_evaluations(samplers, n_samples, audit_logger, max_workers, use_flex_tier)
+    results = run_parallel_quality_evaluations(samplers, n_samples, audit_logger, max_workers, use_flex_tier, question_ids)
 
     # CRITICAL: Validate complete evaluation coverage
     expected_total_evaluations = len(samplers) * n_samples

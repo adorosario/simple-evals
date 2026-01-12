@@ -1,0 +1,50 @@
+question_id,question,target_answer,failed_providers,failure_count,runs_failed,category
+simpleqa_0000,In which specific issue did Black Condor II perish?,Infinite Crisis #1,CustomGPT|OpenAI_RAG,2,2,shared_customgpt_openai
+simpleqa_0001,"How many people were killed when a tractor-trolley returning from a temple fell into a pond in Kanpur on October 2, 2022?",27,Google_Gemini_RAG,1,1,other
+simpleqa_0002,"Where is Sagg Eco Village located in Jammu & Kashmir, India?",Ganderbal,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0004,In which specific issue did Black Condor II perish?,Infinite Crisis #1,CustomGPT|Google_Gemini_RAG|OpenAI_RAG,3,5,all_rag_failed
+simpleqa_0007,"What day, month, and year did the actor Dylan Sprouse marry Barbara Palvin?",15 of July of 2023,CustomGPT,1,2,customgpt_failure
+simpleqa_0008,What years was Antonio de Padua María Severino López de Santa Anna y Pérez de Lebrón vice president?,1837 to 1839,OpenAI_RAG,1,2,openai_rag_failure
+simpleqa_0009,"Which city in Nepal is known as the ""City of Nine Hills?""",Nuwakot,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0011,"What is the chemical formula of atogepant, a class of medications called calcitonin gene-related peptide receptor antagonists?",C29H23F6N5O3,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0013,"What was the first season in which the number of houseguests for the American version of ""Big Brother"" increased?",2,CustomGPT|OpenAI_RAG,2,2,shared_customgpt_openai
+simpleqa_0016,"Which city in Nepal is known as the ""City of Nine Hills?""",Nuwakot,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0017,What was the full name of the first Prime Minister of the Democratic Republic of the Congo?,Patrice Émery Lumumba,Google_Gemini_RAG,1,2,other
+simpleqa_0018,Who was the 6th Prime Minister of Nepal?,Fateh Jang Shah,CustomGPT|OpenAI_RAG,2,4,shared_customgpt_openai
+simpleqa_0020,What Serbian player played in the quarterfinals of the 2018 Madrid Open men's singles?,Dušan Lajović,CustomGPT|OpenAI_RAG,2,1,shared_customgpt_openai
+simpleqa_0022,What is the name of the world's first solid titanium watch?,Citizen X8 Titanium Chronometer,CustomGPT|Google_Gemini_RAG,2,2,customgpt_failure
+simpleqa_0023,"As of 2022, in which years did the Pakistani team not participate in the FIH World Cup?",2014,CustomGPT|OpenAI_RAG,2,2,shared_customgpt_openai
+simpleqa_0025,"According to Henry Scadding, author of ""Toronto of Old,"" how many people died on the HMS Ontario in 1780?",172 (acceptable range: anything between 170 and 174),OpenAI_RAG,1,3,openai_rag_failure
+simpleqa_0027,What EP did Rosalía release in 2019?,Fucking Money Man,Google_Gemini_RAG,1,1,other
+simpleqa_0031,In what year was Glipodes dietrichi described by Franciscolo?,1962,OpenAI_RAG,1,3,openai_rag_failure
+simpleqa_0035,What title did the Royal Academy of Arts appoint to Cornelia Parker in 2010?,Officer of the Order of the British Empire (OBE),CustomGPT|OpenAI_RAG,2,2,shared_customgpt_openai
+simpleqa_0040,"According to Henry Scadding, author of ""Toronto of Old,"" how many people died on the HMS Ontario in 1780?",172 (acceptable range: anything between 170 and 174),Google_Gemini_RAG|OpenAI_RAG,2,2,openai_rag_failure
+simpleqa_0042,"On her Jay-Z & Ciara Live concert tour, in what city, town, or village did Ciara perform on July 10, 2009?",Uncasville,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0044,"In the series ""The Jeffersons,"" who called George and Louise ""Mr. J"" and ""Mrs. J""?",Harry Bentley,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0054,What are the notes of the bebop scale in Key A major?,"A, B, C♯, D, E, F (or E♯), F♯, G♯",CustomGPT|OpenAI_RAG,2,2,shared_customgpt_openai
+simpleqa_0060,What's the painting by Munch called with a tired girl lying on a bed painted in 1894?,The Day After,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0061,On what radio show was a laugh track first used?,The Bing Crosby – Chesterfield Show,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0070,What year did Seiko release their first 300m diver watch?,1968,CustomGPT|OpenAI_RAG,2,1,shared_customgpt_openai
+simpleqa_0072,Which one of the 1990 Fly Girls from the series In Living Color stayed for five seasons?,Deidre Lang,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0075,"What were the month, day, and year when the construction of the UN headquarters in New York City was completed?","October 9, 1952",CustomGPT|OpenAI_RAG,2,3,shared_customgpt_openai
+simpleqa_0079,"What's the month, day, and year of the online publication of the paper ""Articulatory constraints on stop insertion and elision in consonant clusters""?","5th September, 2011",CustomGPT,1,1,customgpt_failure
+simpleqa_0082,What is the maximum depth of the Mediterranean Sea in meters?,5109 m (acceptable range: anything between 5057 and 5161 m),Google_Gemini_RAG|OpenAI_RAG,2,2,openai_rag_failure
+simpleqa_0083,In what year was Glipodes dietrichi described by Franciscolo?,1962,OpenAI_RAG,1,2,openai_rag_failure
+simpleqa_0084,How old was Olga Kharlan when she joined the Ukrainian National Olympic team?,14.,CustomGPT,1,1,customgpt_failure
+simpleqa_0088,Where was the first B.A.S.S. Bassmaster Tournament held?,Lake Mead,Google_Gemini_RAG,1,1,other
+simpleqa_0090,Which hotel was awarded World's Leading Adventure Hotel 2022?,Pikaia Lodge,OpenAI_RAG,1,2,openai_rag_failure
+simpleqa_0091,What year did Seiko release their first 300m diver watch?,1968,CustomGPT|OpenAI_RAG,2,2,shared_customgpt_openai
+simpleqa_0092,In which specific issue did Black Condor II perish?,Infinite Crisis #1,CustomGPT,1,1,customgpt_failure
+simpleqa_0096,Who was the first principal of Mayo College in India?,Colonel Sir Oliver St John,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0099,"On what date, month, and year was the Indian politician T. M. Selvaganapathy acquitted by the High Court in connection to the Pleasant Stay hotel case?",4 December 2001,CustomGPT,1,2,customgpt_failure
+simpleqa_0102,In which specific issue did Black Condor II perish?,Infinite Crisis #1,CustomGPT,1,1,customgpt_failure
+simpleqa_0108,How old was Olga Kharlan when she joined the Ukrainian National Olympic team?,14.,CustomGPT,1,1,customgpt_failure
+simpleqa_0110,How many inductees did the American Classical Music Hall of Fame have in 2005?,None.,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0128,Who was the first Deputy Chief Minister of Jammu and Kashmir?,Mirza Afzal Beg,CustomGPT,1,2,customgpt_failure
+simpleqa_0130,What Serbian player played in the quarterfinals of the 2018 Madrid Open men's singles?,Dušan Lajović,CustomGPT|OpenAI_RAG,2,2,shared_customgpt_openai
+simpleqa_0145,"In TWD Season 11, Episode 10, we learn that Connie got whose uncle kicked out of Congress before the apocalypse?",Pamela Milton's uncle,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0146,"As of 2022, in which years did the Pakistani team not participate in the FIH World Cup?",2014,CustomGPT|OpenAI_RAG,2,2,shared_customgpt_openai
+simpleqa_0159,In what year did Etta Cone commission Henri Matisse to make a posthumous portrait of Claribel Cone?,1930,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0167,Who was the Guy Medal in Gold awarded to in 1973?,David Cox,CustomGPT,1,1,customgpt_failure
+simpleqa_0168,What change did Patch 0.7 make to the spell Crusader Strike in the beta of World of Warcraft?,Damage increased and instant cast spell.,OpenAI_RAG,1,1,openai_rag_failure
+simpleqa_0175,As of which month and year did StatCounter estimate that Chrome has a 65% worldwide browser market share (after peaking at 72.38% in November 2018) on personal computers?,April 2024,CustomGPT,1,2,customgpt_failure

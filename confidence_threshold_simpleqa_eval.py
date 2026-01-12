@@ -609,7 +609,8 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         audit_logger=None,
         confidence_thresholds: List[ConfidenceThreshold] = None,
         use_flex_tier: bool = False,
-        enable_validation: bool = True
+        enable_validation: bool = True,
+        question_ids: List[str] | None = None
     ):
         # Use GPT-5.1 as default grader for improved reliability (SOTA December 2025)
         if grader_model is None:
@@ -667,38 +668,73 @@ class ConfidenceThresholdSimpleQAEval(Eval):
         # This ensures questions are answerable from the knowledge base
         verified_csv_path = Path(__file__).parent / "simpleqa-verified" / "simpleqa_verified.csv"
 
-        if verified_csv_path.exists():
-            df = pandas.read_csv(verified_csv_path)
-            # Map columns to match original SimpleQA format
-            # verified CSV has: original_index, problem, answer, topic, answer_type, multi_step, requires_reasoning, urls
-            # original CSV has: problem, answer, metadata (JSON with topic, answer_type, urls)
-            examples = []
-            for _, row in df.iterrows():
-                example = {
-                    'problem': row['problem'],
-                    'answer': row['answer'],
-                    'metadata': {
-                        'topic': row.get('topic', ''),
-                        'answer_type': row.get('answer_type', ''),
-                        'urls': row.get('urls', '').split(',') if isinstance(row.get('urls', ''), str) else []
-                    },
-                    'original_index': row.get('original_index', 0)
-                }
-                examples.append(example)
-            print(f"✓ Loaded {len(examples)} questions from verified SimpleQA dataset")
-        else:
-            # Fallback to original dataset (for backwards compatibility)
-            print(f"⚠ Warning: Verified dataset not found at {verified_csv_path}")
-            print("  Falling back to original SimpleQA dataset (may include questions not in KB)")
-            with requests.get("https://openaipublic.blob.core.windows.net/simple-evals/simple_qa_test_set.csv") as response:
-                blob_file = io.BytesIO(response.content)
-                df = pandas.read_csv(blob_file)
-            examples = [row.to_dict() for _, row in df.iterrows()]
+        # CRITICAL: Require simpleqa-verified dataset for all production benchmarks
+        # This prevents running benchmarks on questions that may not be in the KB
+        if not verified_csv_path.exists():
+            raise FileNotFoundError(
+                f"FATAL: simpleqa-verified dataset not found at {verified_csv_path}\n"
+                "All benchmarks MUST use the verified dataset to ensure KB coverage.\n"
+                "Run: python scripts/download_and_extract_kb.py to set up the dataset."
+            )
+
+        df = pandas.read_csv(verified_csv_path)
+
+        # Validate dataset integrity
+        expected_question_count = 1000
+        actual_count = len(df)
+        if actual_count != expected_question_count:
+            print(f"⚠ Warning: Expected {expected_question_count} questions, found {actual_count}")
+
+        # Verify we're using the verified dataset (not an accidental swap)
+        assert "simpleqa-verified" in str(verified_csv_path), \
+            "FATAL: Must use simpleqa-verified dataset for benchmarks"
+
+        # Map columns to match original SimpleQA format
+        # verified CSV has: original_index, problem, answer, topic, answer_type, multi_step, requires_reasoning, urls
+        # original CSV has: problem, answer, metadata (JSON with topic, answer_type, urls)
+        examples = []
+        for _, row in df.iterrows():
+            example = {
+                'problem': row['problem'],
+                'answer': row['answer'],
+                'metadata': {
+                    'topic': row.get('topic', ''),
+                    'answer_type': row.get('answer_type', ''),
+                    'urls': row.get('urls', '').split(',') if isinstance(row.get('urls', ''), str) else []
+                },
+                'original_index': row.get('original_index', 0)
+            }
+            examples.append(example)
+        print(f"✓ Loaded {len(examples)} questions from verified SimpleQA dataset (KB coverage validated)")
 
         # Use single randomization seed for all operations to ensure reproducibility
         rng = random.Random(42)  # Fixed seed for all random operations
 
-        if num_examples:
+        # Assign question_ids based on original_index BEFORE filtering
+        for example in examples:
+            orig_idx = example.get('original_index', 0)
+            example['question_id'] = f"simpleqa_{orig_idx:04d}"
+
+        # Filter by specific question_ids if provided
+        if question_ids:
+            # Filter to only requested question IDs
+            question_ids_set = set(question_ids)
+            filtered_examples = [e for e in examples if e.get('question_id') in question_ids_set]
+
+            # Validate all requested IDs were found
+            found_ids = {e.get('question_id') for e in filtered_examples}
+            missing_ids = question_ids_set - found_ids
+            if missing_ids:
+                print(f"⚠ Warning: {len(missing_ids)} requested question IDs not found in dataset:")
+                for mid in sorted(missing_ids)[:10]:
+                    print(f"   - {mid}")
+                if len(missing_ids) > 10:
+                    print(f"   ... and {len(missing_ids) - 10} more")
+
+            examples = filtered_examples
+            print(f"✓ Filtered to {len(examples)} questions by question_ids")
+
+        elif num_examples:
             assert n_repeats == 1, "n_repeats only supported when max_examples = None"
             examples = rng.sample(examples, num_examples)
 
@@ -712,10 +748,6 @@ class ConfidenceThresholdSimpleQAEval(Eval):
 
         # Add thread safety for audit logging
         self._audit_lock = threading.Lock()
-
-        # Add question IDs for tracking
-        for i, example in enumerate(self.examples):
-            example['question_id'] = f"simpleqa_{i:04d}"
 
         # Initialize blind evaluation system - provider anonymization
         # Use class variable to persist mapping across instances
