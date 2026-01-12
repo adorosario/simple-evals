@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '⚠️  VERIFICATION REMINDER: After edits, run tests and update @todo.md + @docs/GOALS.md AF status before continuing.'"
+          }
+        ]
+      }
+    ]
+  }
+}
