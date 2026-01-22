@@ -1,62 +1,154 @@
-No — they’re **not all equivalent**, even though two rows *look* like they are.
+# Reasoning/Thinking Fairness Configuration
 
-### 1) “OpenAI RAG gpt-5.1” vs “CustomGPT gpt-5.1 (via API)”
+This document establishes the fair comparison configuration for RAG provider benchmarking, ensuring apples-to-apples evaluation across different model families.
 
-These **can be equivalent** *if* they both call the **same OpenAI model snapshot** and the **same reasoning settings**.
+## Final Configuration (January 2026)
 
-* OpenAI’s `gpt-5.1` is an **alias**, and OpenAI lists a specific snapshot you can pin: **`gpt-5.1-2025-11-13`**. Pinning is how you make behavior consistent across runs/providers. ([OpenAI Platform][1])
-* GPT-5.1 model limits & pricing (OpenAI): **400k context**, **128k max output**, **$1.25 / 1M input**, **$0.125 / 1M cached input**, **$10 / 1M output**. ([OpenAI Platform][1])
+After extensive testing, the following configuration provides the fairest comparison:
 
-**Big fairness gotcha:** in OpenAI’s Chat Completions API reference, GPT-5.1 supports `reasoning_effort` values **`none|low|medium|high`** and the **default is `none`**. So two “gpt-5.1” runs can be *very* different if one provider sets effort and the other doesn’t. ([OpenAI Platform][2])
+| Provider | Model | Reasoning/Thinking Setting | Avg Latency | Cost per 1M tokens |
+|----------|-------|---------------------------|-------------|-------------------|
+| **OpenAI RAG** | `gpt-5.1` | `reasoning_effort: none` (default) | ~8,700ms | $1.25 in / $10 out |
+| **OpenAI Vanilla** | `gpt-5.1` | `reasoning_effort: none` (default) | ~2,700ms | $1.25 in / $10 out |
+| **CustomGPT RAG** | `gpt-5.1` (via API) | `reasoning_effort: none` (inherited) | ~3,300ms | $0.10/query (subscription) |
+| **Google Gemini RAG** | `gemini-3-flash-preview` | `thinking_level: MINIMAL` | ~4,700ms | $0.50 in / $3 out |
 
-### 2) “Gemini RAG gemini-3-pro-preview”
+### Why This Configuration?
 
-This is **not equivalent** to GPT-5.1; it’s a different vendor model with different defaults, limits, and cost structure.
+1. **GPT-5.1 defaults to `reasoning_effort: none`** - No extended reasoning unless explicitly requested
+2. **Gemini 3 Pro cannot disable thinking** - Even `thinking_level: LOW` produces 2000-4000+ thinking tokens
+3. **Gemini 3 Flash with `MINIMAL`** - Closest to "no thinking" available, matches GPT-5.1's behavior
 
-* Gemini 3 Pro Preview model id: **`gemini-3-pro-preview`**, with **1,048,576 max input tokens** and **65,536 max output tokens** (Vertex docs). ([Google Cloud Documentation][3])
-* Gemini pricing (AI Studio / Developer API): **$2 / 1M input** and **$12 / 1M output** for prompts **≤200k tokens**, but it jumps to **$4 / 1M input** and **$18 / 1M output** for prompts **>200k tokens**. Output pricing explicitly includes “thinking tokens.” ([Google AI for Developers][4])
-* Gemini 3 “thinking” control: `thinkingLevel` can be **low or high**, and if you don’t set it, Gemini 3 Pro Preview uses default dynamic thinking level **high**. Also: **you cannot disable thinking** for Gemini 3 Pro. ([Google AI for Developers][5])
+## The Problem We Solved
 
-### Cost + “thinking budget” comparison (what matters for your shootout)
+### Initial Unfair Configuration (Discovered January 2026)
 
-| Row in your table                  | Underlying model                                                                         | Default “thinking”                                                                | How to set thinking budget                                                                                                           | Key pricing notes                                                                                     |
-| ---------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| OpenAI RAG: `gpt-5.1`              | OpenAI GPT-5.1                                                                           | `reasoning_effort` default **none** ([OpenAI Platform][2])                        | `reasoning_effort: none/low/medium/high` ([OpenAI Platform][2]); reasoning tokens are billed as output tokens ([OpenAI Platform][6]) | $1.25 in / $10 out per 1M tokens ([OpenAI Platform][1])                                               |
-| CustomGPT: `gpt-5.1 (via API)`     | **Same as above if you pass the same model id/snapshot + params** ([OpenAI Platform][1]) | Depends on what you set in your OpenAI call ([OpenAI Platform][2])                | Same knobs as above ([OpenAI Platform][2])                                                                                           | Same OpenAI pricing if it’s truly OpenAI pass-through ([OpenAI Platform][1])                          |
-| Gemini RAG: `gemini-3-pro-preview` | Google Gemini 3 Pro Preview                                                              | Default dynamic thinking **high** (can’t disable) ([Google AI for Developers][5]) | `thinkingLevel: low/high` ([Google AI for Developers][5])                                                                            | Tiered pricing at 200k prompt tokens; output includes thinking tokens ([Google AI for Developers][4]) |
+| Provider | Model | Default Thinking | Latency | Issue |
+|----------|-------|-----------------|---------|-------|
+| OpenAI RAG | gpt-5.1 | **NONE** | ~8,900ms | Fair baseline |
+| Gemini RAG | gemini-3-pro-preview | **HIGH** (default) | ~29,000ms | 🚨 Massive advantage |
 
-### What to do to make the shootout “fair”
+Gemini was using 2000-4000+ thinking tokens per request while OpenAI used zero reasoning tokens.
 
-1. **Pin versions where possible**
+### Testing Different Configurations
 
-* OpenAI: use **`gpt-5.1-2025-11-13`** (not just `gpt-5.1`). ([OpenAI Platform][1])
-* Gemini: it’s a **preview** model id (`gemini-3-pro-preview`), so log date/time + model id for reproducibility. ([Google Cloud Documentation][3])
+| Gemini Configuration | Latency | vs CustomGPT (3.3s) | Fairness |
+|---------------------|---------|---------------------|----------|
+| Pro + HIGH (default) | 29,003ms | 8.8x slower | ❌ Unfair - heavy thinking |
+| Pro + LOW | 18,625ms | 5.6x slower | ⚠️ Still thinking significantly |
+| **Flash + MINIMAL** | **4,720ms** | **1.4x slower** | ✅ Fair - minimal thinking |
 
-2. **Normalize thinking**
+## Implementation Details
 
-* If you run Gemini at its default (high), you probably want OpenAI **not** at `none`. Otherwise you’re comparing “high thinking” vs “no reasoning.” ([Google AI for Developers][5])
-* Pick a policy like **High vs High** (Gemini `thinkingLevel=high`; OpenAI `reasoning_effort=high`) or **Low vs Low**.
+### OpenAI GPT-5.1 Configuration
 
-3. **Normalize token ceilings**
+```python
+# No special configuration needed - defaults to no reasoning
+sampler = AuditedOpenAIRAGSampler(
+    model="gpt-5.1",
+    vector_store_id=vector_store_id,
+    temperature=0,
+    # reasoning_effort defaults to "none"
+)
+```
 
-* OpenAI: cap total generation (including reasoning tokens) using a max output limit; reasoning tokens are billed and can be substantial. ([OpenAI Platform][6])
-* Gemini: cap `maxOutputTokens`, and remember output pricing includes thinking tokens. ([Google AI for Developers][4])
+GPT-5.1 supports: `none` (default), `low`, `medium`, `high`
 
-4. **Keep prompt lengths under 200k tokens** if you want Gemini costs comparable (otherwise you’ll trigger the higher pricing tier). ([Google AI for Developers][4])
+### Google Gemini Configuration
 
-### About your specific question: “what does CustomGPT `custom_model = gpt-5.1` map to?”
+```python
+# Use Flash with MINIMAL thinking for fair comparison
+sampler = AuditedGeminiRAGSampler(
+    store_name=store_name,
+    model="gemini-3-flash-preview",  # Flash supports MINIMAL
+    temperature=0.0,
+    thinking_level="MINIMAL",  # Closest to "no thinking"
+)
+```
 
-From OpenAI’s side, **`gpt-5.1` is a first-class OpenAI model name/alias** with an available pinned snapshot **`gpt-5.1-2025-11-13`**. ([OpenAI Platform][1])
-So **if** CustomGPT is passing the string through unchanged, it maps to that OpenAI model family. The only way it becomes “unfair” is if CustomGPT (or the OpenAI RAG baseline) is silently using different **`reasoning_effort`** (or different max-token caps). ([OpenAI Platform][2])
+Gemini 3 thinking levels:
+- **Pro**: `LOW`, `HIGH` (default) - cannot disable
+- **Flash**: `MINIMAL`, `LOW`, `MEDIUM`, `HIGH` (default)
 
-* [reuters.com](https://www.reuters.com/technology/openai-launches-gpt-52-ai-model-with-improved-capabilities-2025-12-11/?utm_source=chatgpt.com)
-* [theverge.com](https://www.theverge.com/ai-artificial-intelligence/842529/openai-gpt-5-2-new-model-chatgpt?utm_source=chatgpt.com)
-* [theverge.com](https://www.theverge.com/news/802653/openai-gpt-5-1-upgrade-personality-presets?utm_source=chatgpt.com)
+### Code Location
 
-[1]: https://platform.openai.com/docs/models/gpt-5.1 "GPT-5.1 Model | OpenAI API"
-[2]: https://platform.openai.com/docs/api-reference/chat?locale=en "Chat Completions | OpenAI API Reference"
-[3]: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/3-pro "Gemini 3 Pro  |  Generative AI on Vertex AI  |  Google Cloud Documentation"
-[4]: https://ai.google.dev/gemini-api/docs/pricing "Gemini Developer API pricing  |  Gemini API  |  Google AI for Developers"
-[5]: https://ai.google.dev/gemini-api/docs/thinking "Gemini thinking  |  Gemini API  |  Google AI for Developers"
-[6]: https://platform.openai.com/docs/guides/reasoning "Reasoning models | OpenAI API"
+The configuration is set in `scripts/confidence_threshold_benchmark.py`:
+- Lines 113-130: Gemini sampler setup with `thinking_level="MINIMAL"`
 
+## Cost Comparison
+
+| Provider | Model | Input/1M | Output/1M | Notes |
+|----------|-------|----------|-----------|-------|
+| OpenAI | gpt-5.1 | $1.25 | $10.00 | Reasoning tokens billed as output |
+| Gemini | gemini-3-pro-preview | $2.00 | $12.00 | Thinking tokens billed as output |
+| Gemini | gemini-3-flash-preview | $0.50 | $3.00 | 75% cheaper than Pro |
+| CustomGPT | gpt-5.1 | $0.10/query | - | Subscription model |
+
+## Alternative: High Reasoning Comparison
+
+If you want to compare models WITH reasoning enabled:
+
+```python
+# OpenAI with reasoning
+ChatCompletionSampler(model="gpt-5.1", reasoning_effort="low")
+
+# Gemini with thinking
+AuditedGeminiRAGSampler(model="gemini-3-pro-preview", thinking_level="LOW")
+```
+
+Note: Even at `LOW`, Gemini Pro still produces significant thinking tokens.
+
+## Verification
+
+To verify fair configuration, check latencies in benchmark output:
+- All RAG providers should be within 2-3x of each other
+- If Gemini is 5x+ slower, thinking is likely too high
+
+## 100-Sample Benchmark Results (January 2026)
+
+Official results with fair configuration (run_20260122_152001_873):
+
+| Provider | Quality Score | Volume Score | Accuracy | Avg Latency | Total Cost |
+|----------|---------------|--------------|----------|-------------|------------|
+| **Google_Gemini_RAG** | **0.85** | **0.97** | 97.0% | 6,474ms | $0.17 |
+| **CustomGPT_RAG** | 0.78 | 0.86 | 97.7% | 3,632ms | $10.00 |
+| **OpenAI_RAG** | 0.60 | 0.92 | 92.0% | 13,169ms | $2.14 |
+| **OpenAI_Vanilla** | -1.26 | 0.22 | 37.3% | 4,305ms | $0.04 |
+
+### Key Findings
+
+1. **Latency Fairness Achieved**: Gemini at 6,474ms is now 1.8x CustomGPT (was 8x with Pro+HIGH)
+2. **Quality Leader**: Google Gemini RAG with 0.85 quality score (penalty-aware)
+3. **Volume Leader**: Google Gemini RAG with 0.97 volume score (traditional)
+4. **Cost Efficiency**: Gemini Flash at $0.17 total vs $2.14 for OpenAI RAG
+
+### Penalty Breakdown
+
+| Provider | Correct | Incorrect | Abstained | Penalty Count |
+|----------|---------|-----------|-----------|---------------|
+| Google_Gemini_RAG | 97 | 3 | 0 | 3 |
+| CustomGPT_RAG | 86 | 2 | 12 | 2 |
+| OpenAI_RAG | 92 | 8 | 0 | 8 |
+| OpenAI_Vanilla | 22 | 37 | 41 | 37 |
+
+### Latency Comparison (Before vs After Fair Configuration)
+
+| Configuration | Gemini Latency | vs CustomGPT | Status |
+|---------------|----------------|--------------|--------|
+| **Before** (Pro + HIGH) | 29,003ms | 8.8x slower | ❌ Unfair |
+| **After** (Flash + MINIMAL) | 6,474ms | 1.8x slower | ✅ Fair |
+
+## References
+
+- [GPT-5.1 Model | OpenAI API](https://platform.openai.com/docs/models/gpt-5.1)
+- [Reasoning models | OpenAI API](https://platform.openai.com/docs/guides/reasoning)
+- [Gemini thinking | Google AI for Developers](https://ai.google.dev/gemini-api/docs/thinking)
+- [Gemini 3 Flash | Google Cloud](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/3-flash)
+- [Gemini API Pricing](https://ai.google.dev/gemini-api/docs/pricing)
+
+## Changelog
+
+- **2026-01-22**: Added 100-sample benchmark results with fair configuration
+- **2026-01-22**: Switched from Gemini 3 Pro to Gemini 3 Flash with `thinking_level="MINIMAL"` for fair comparison
+- **2026-01-22**: Documented the thinking/reasoning fairness issue and resolution
+- **2026-01-12**: Initial benchmark with unfair Gemini Pro HIGH configuration

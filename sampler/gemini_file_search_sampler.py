@@ -32,6 +32,7 @@ class GeminiFileSearchSampler(SamplerBase):
         temperature: float = 0.0,
         max_output_tokens: int = 1024,
         system_message: Optional[str] = None,
+        thinking_level: Optional[str] = None,  # None=default, "LOW", "HIGH", "MINIMAL" (Flash only)
     ):
         """
         Initialize the Gemini File Search sampler.
@@ -43,6 +44,7 @@ class GeminiFileSearchSampler(SamplerBase):
             temperature: Temperature for generation (default: 0.0)
             max_output_tokens: Maximum output tokens (default: 1024)
             system_message: Optional system message
+            thinking_level: Thinking level - "LOW", "HIGH", "MINIMAL" (Flash only), or None for default
         """
         if not store_name:
             raise ValueError("store_name is required")
@@ -53,6 +55,7 @@ class GeminiFileSearchSampler(SamplerBase):
         self.temperature = temperature
         self.max_output_tokens = max_output_tokens
         self.system_message = system_message
+        self.thinking_level = thinking_level
 
         # Initialize the client
         self.client = genai.Client(api_key=self.api_key)
@@ -115,11 +118,19 @@ class GeminiFileSearchSampler(SamplerBase):
         )
 
         # Build config
-        config = types.GenerateContentConfig(
-            temperature=self.temperature,
-            max_output_tokens=self.max_output_tokens,
-            tools=[file_search_tool]
-        )
+        config_params = {
+            "temperature": self.temperature,
+            "max_output_tokens": self.max_output_tokens,
+            "tools": [file_search_tool]
+        }
+
+        # Add thinking config if specified (for controlling reasoning depth)
+        if self.thinking_level:
+            config_params["thinking_config"] = types.ThinkingConfig(
+                thinking_level=self.thinking_level.upper()
+            )
+
+        config = types.GenerateContentConfig(**config_params)
 
         # Add system instruction if provided
         if self.system_message:

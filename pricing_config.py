@@ -28,9 +28,10 @@ MODEL_PRICING: Dict[str, Optional[Dict[str, float]]] = {
     "gpt-4": {"input": 30.00, "output": 60.00},
     "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
 
-    # Google Gemini Models (December 2025)
+    # Google Gemini Models (January 2026)
     # Source: https://ai.google.dev/gemini-api/docs/pricing
     "gemini-3-pro-preview": {"input": 2.00, "output": 12.00},
+    "gemini-3-flash-preview": {"input": 0.50, "output": 3.00},  # Gemini 3 Flash - 75% cheaper than Pro
     "gemini-2.5-pro": {"input": 2.00, "output": 12.00},
     "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
     "gemini-1.5-pro": {"input": 1.25, "output": 5.00},

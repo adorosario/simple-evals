@@ -31,9 +31,10 @@ class AuditedGeminiRAGSampler(AuditedSamplerBase):
         self,
         store_name: str,
         api_key: Optional[str] = None,
-        model: str = "gemini-3-pro-preview",  # Gemini 3 Pro Preview (SOTA December 2025)
+        model: str = "gemini-3-pro-preview",  # Gemini 3 Pro (API still uses -preview)
         temperature: float = 0.0,
         system_message: Optional[str] = None,
+        thinking_level: Optional[str] = None,  # "LOW", "HIGH", "MINIMAL" (Flash only)
         audit_logger=None
     ):
         """
@@ -45,6 +46,7 @@ class AuditedGeminiRAGSampler(AuditedSamplerBase):
             model: Model to use (default: gemini-3-pro)
             temperature: Temperature for generation (default: 0.0)
             system_message: Optional system message for RAG prompt
+            thinking_level: Thinking level - "LOW", "HIGH", "MINIMAL" (Flash only), or None for default
             audit_logger: Optional audit logger for request tracking
         """
         super().__init__(audit_logger)
@@ -58,8 +60,10 @@ class AuditedGeminiRAGSampler(AuditedSamplerBase):
             api_key=api_key,
             model=model,
             temperature=temperature,
-            system_message=system_message
+            system_message=system_message,
+            thinking_level=thinking_level
         )
+        self._thinking_level = thinking_level
 
         # Set provider name for audit logging
         self.provider_name = "Google_Gemini_RAG"
@@ -187,7 +191,7 @@ class AuditedGeminiRAGSampler(AuditedSamplerBase):
                     "thoughts_tokens": thoughts_tokens,
                     "total_output_billed": total_output_tokens,
                     "total_tokens_from_api": total_tokens,
-                    "pricing_note": "Input=$2/M, Output=$12/M for gemini-3-pro-preview"
+                    "pricing_note": f"See pricing_config.py for {self._model} rates"
                 }
         except Exception:
             pass

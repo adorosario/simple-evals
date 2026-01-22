@@ -110,16 +110,17 @@ def setup_samplers(audit_logger=None):
         print(f"   ❌ {error_msg}")
         errors.append(error_msg)
 
-    # 4. Google Gemini RAG Sampler (with File Search, using gemini-3-pro-preview)
+    # 4. Google Gemini RAG Sampler (with File Search, using gemini-3-pro GA)
     print("🔧 Setting up Google Gemini RAG (File Search) sampler...")
     try:
         google_store_name = os.environ.get("GOOGLE_FILE_SEARCH_STORE_NAME")
         if google_store_name:
             sampler = AuditedGeminiRAGSampler(
                 store_name=google_store_name,
-                model="gemini-3-pro-preview",
+                model="gemini-3-flash-preview",  # Gemini 3 Flash - supports MINIMAL thinking
                 system_message=STANDARD_RAG_SYSTEM_PROMPT,
                 temperature=0.0,
+                thinking_level="MINIMAL",  # Closest to "no thinking" for fair comparison with GPT-5.1
                 audit_logger=audit_logger
             )
             samplers["Google_Gemini_RAG"] = sampler
@@ -127,7 +128,7 @@ def setup_samplers(audit_logger=None):
             if audit_logger:
                 audit_logger.add_provider("Google_Gemini_RAG", sampler._get_request_data([]))
 
-            print("   ✅ Google Gemini RAG sampler ready (gemini-3-pro-preview)")
+            print("   ✅ Google Gemini RAG sampler ready (gemini-3-flash-preview, thinking=MINIMAL)")
         else:
             error_msg = "Google Gemini RAG setup skipped: GOOGLE_FILE_SEARCH_STORE_NAME not set"
             print(f"   ⚠️ {error_msg}")
