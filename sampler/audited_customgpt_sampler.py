@@ -131,7 +131,7 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
                         url,
                         data=form_data,  # Use data for form-encoded data
                         headers=headers,
-                        timeout=60.0  # 60 second timeout per request
+                        timeout=120.0  # 120 second timeout per request
                     )
                     api_time = time.time() - start_time
                     print(f"CustomGPT API call completed in {api_time:.2f}s, status: {response.status_code}")
