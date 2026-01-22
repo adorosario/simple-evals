@@ -61,12 +61,13 @@ def load_kb_documents(kb_dir: Path) -> Dict[int, str]:
                 content = doc_path.read_text(encoding='utf-8')
                 documents[original_idx] = content
     else:
-        # Fallback: sequential loading (old behavior)
-        for doc_file in sorted(kb_dir.glob("verified_*.txt")):
-            idx_str = doc_file.stem.replace("verified_", "")
-            idx = int(idx_str)
-            content = doc_file.read_text(encoding='utf-8')
-            documents[idx] = content
+        # Manifest required for correct original_index -> filename mapping
+        # The verified_XXXX file number is NOT the original_index!
+        raise FileNotFoundError(
+            f"KB manifest not found at {manifest_path}. "
+            "The manifest is required to correctly map original_index to KB files. "
+            "Run scripts/build_verified_knowledge_base.py to generate it."
+        )
 
     return documents
 
