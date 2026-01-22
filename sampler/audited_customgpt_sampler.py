@@ -26,7 +26,7 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
 
     def __init__(
         self,
-        model_name: str = "gpt-5.1",  # GPT-5.1 (SOTA December 2025)
+        model_name: str = "gpt-5.1-none",  # GPT-5.1 with no reasoning (fair comparison)
         max_tokens: int = 1024,
         temperature: float = 0,
         top_p: float = 0.95,
@@ -117,7 +117,8 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
                     form_data = {
                         "response_source": "default",
                         "prompt": prompt,
-                        "custom_persona": self.custom_persona
+                        "custom_persona": self.custom_persona,
+                        "chatbot_model": self.model_name  # GPT-5.1-none for fair comparison
                     }
 
                     headers = {
@@ -248,7 +249,8 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
                 "form_data_fields": {
                     "response_source": "default",
                     "prompt": prompt,
-                    "custom_persona": self.custom_persona
+                    "custom_persona": self.custom_persona,
+                    "chatbot_model": self.model_name
                 }
             }
         }
@@ -288,6 +290,6 @@ class AuditedCustomGPTSampler(AuditedSamplerBase):
     @classmethod
     def from_env(cls, audit_logger=None):
         """Create sampler from environment variables with audit logging"""
-        model_name = os.environ.get("CUSTOMGPT_MODEL_NAME", "gpt-5.1")
+        model_name = os.environ.get("CUSTOMGPT_MODEL_NAME", "gpt-5.1-none")
         custom_persona = os.environ.get("CUSTOMGPT_PERSONA", "You are a helpful assistant. Use the knowledge base to provide accurate, detailed answers.")
         return cls(model_name=model_name, custom_persona=custom_persona, audit_logger=audit_logger)

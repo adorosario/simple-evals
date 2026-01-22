@@ -51,7 +51,7 @@ def setup_samplers(audit_logger=None):
     # 1. CustomGPT RAG Sampler (with GPT-5.1)
     print("🔧 Setting up CustomGPT (RAG) sampler...")
     try:
-        os.environ["CUSTOMGPT_MODEL_NAME"] = "gpt-5.1"
+        os.environ["CUSTOMGPT_MODEL_NAME"] = "gpt-5.1-none"  # GPT-5.1 with no reasoning for fair comparison
         sampler = AuditedCustomGPTSampler.from_env(audit_logger=audit_logger)
         samplers["CustomGPT_RAG"] = sampler
 
