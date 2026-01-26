@@ -146,6 +146,7 @@ audit_logs/
 checkpoints/
 
 # Data files and test sets
+data/
 *_test_set.csv
 *_test_set_*.csv
 *_fixed.csv
